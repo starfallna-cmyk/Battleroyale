@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>1V1 BATTLE — Build &amp; Shoot</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚔️</text></svg>" />
+  <link rel="stylesheet" href="css/style.css" />
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <script type="importmap">
+    { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+  </script>
+</head>
+<body>
+  <!-- ===== MENU ===== -->
+  <div id="menu" class="screen">
+    <div class="menu-box">
+      <h1 class="title">1V1<span>.BATTLE</span></h1>
+      <p class="subtitle">build &middot; shoot &middot; win</p>
+
+      <input id="nameInput" type="text" maxlength="12" placeholder="Your name" autocomplete="off" />
+
+      <div class="menu-buttons">
+        <button id="btnPractice" class="btn btn-alt">🎯 PRACTICE</button>
+        <button id="btnCreate" class="btn btn-main">⚔️ CREATE GAME</button>
+        <button id="btnJoin" class="btn btn-main">🔗 JOIN GAME</button>
+      </div>
+
+      <div id="joinRow" class="join-row hidden">
+        <input id="codeInput" type="text" maxlength="4" placeholder="CODE" autocomplete="off" />
+        <button id="btnJoinGo" class="btn btn-main">GO</button>
+      </div>
+
+      <div id="menuStatus" class="menu-status"></div>
+
+      <div class="controls-help">
+        <div><b>WASD</b> move &middot; <b>SPACE</b> jump &middot; <b>LMB</b> shoot / place &middot; <b>RMB</b> aim</div>
+        <div><b>1 2 3</b> weapons &middot; <b>Z</b> wall &middot; <b>X</b> floor &middot; <b>C</b> ramp &middot; <b>Q</b> quick wall &middot; <b>R</b> reload</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== HUD ===== -->
+  <div id="hud" class="hidden">
+    <div id="crosshair">+</div>
+    <div id="hitmarker">✕</div>
+    <div id="damageFlash"></div>
+    <div id="scopeOverlay" class="hidden"></div>
+
+    <div id="scoreboard">
+      <span id="nameMe">You</span>
+      <span id="scoreMe">0</span>
+      <span class="score-sep">:</span>
+      <span id="scoreFoe">0</span>
+      <span id="nameFoe">Foe</span>
+    </div>
+
+    <div id="roomBadge" class="hidden"></div>
+    <div id="killfeed"></div>
+
+    <div id="hpWrap">
+      <div id="hpBar"><div id="hpFill"></div></div>
+      <div id="hpText">100</div>
+    </div>
+
+    <div id="loadout">
+      <div class="slot" data-slot="w0"><span class="key">1</span>🔫</div>
+      <div class="slot" data-slot="w1"><span class="key">2</span>💥</div>
+      <div class="slot" data-slot="w2"><span class="key">3</span>🎯</div>
+      <div class="slot slot-build" data-slot="b0"><span class="key">Z</span>🧱</div>
+      <div class="slot slot-build" data-slot="b1"><span class="key">X</span>⬜</div>
+      <div class="slot slot-build" data-slot="b2"><span class="key">C</span>📐</div>
+    </div>
+
+    <div id="ammoWrap">
+      <div id="weaponName">Assault Rifle</div>
+      <div id="ammoText">30 / ∞</div>
+    </div>
+  </div>
+
+  <!-- ===== OVERLAYS ===== -->
+  <div id="lockOverlay" class="screen overlay hidden">
+    <div class="overlay-box">
+      <h2>⏸ PAUSED</h2>
+      <p>Click to play</p>
+    </div>
+  </div>
+
+  <div id="deathOverlay" class="screen overlay hidden">
+    <div class="overlay-box">
+      <h2 class="red">💀 ELIMINATED</h2>
+      <p>Respawning in <span id="respawnTimer">3</span>…</p>
+    </div>
+  </div>
+
+  <div id="banner" class="hidden"></div>
+
+  <div id="disconnectOverlay" class="screen overlay hidden">
+    <div class="overlay-box">
+      <h2>Opponent left the game</h2>
+      <button id="btnBackMenu" class="btn btn-main">BACK TO MENU</button>
+    </div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
