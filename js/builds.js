@@ -11,13 +11,16 @@ const GEO = {
   floor: new THREE.BoxGeometry(CELL, 0.3, CELL),
   ramp:  new THREE.BoxGeometry(CELL, 0.35, RAMP_LEN),
 };
+const EDGES = {
+  wall:  new THREE.EdgesGeometry(GEO.wall),
+  floor: new THREE.EdgesGeometry(GEO.floor),
+  ramp:  new THREE.EdgesGeometry(GEO.ramp),
+};
 
-const BUILD_COLOR = 0x6f86ff;
-
-function buildMaterial() {
+function buildMaterial(color) {
   return new THREE.MeshStandardMaterial({
-    color: BUILD_COLOR, roughness: 0.55, metalness: 0.15,
-    transparent: true, opacity: 0.92,
+    color, roughness: 0.5, metalness: 0.2,
+    transparent: true, opacity: 0.9,
   });
 }
 
@@ -45,22 +48,35 @@ export class BuildSystem {
   constructor(scene) {
     this.group = new THREE.Group();
     scene.add(this.group);
-    this.map = new Map(); // key -> { key, type, hp, mesh, box, ramp? }
+    this.map = new Map(); // key -> { key, type, hp, mesh, color, box?, ramp? }
+    this.spawning = [];   // pop-in animations
+    this.dying = [];      // destruction animations
+    this.ghostT = 0;
 
     this.ghosts = {};
     for (const t of BUILD_TYPES) {
       const g = new THREE.Mesh(GEO[t], ghostMaterial());
       g.rotation.order = 'YXZ';
       g.visible = false;
+      g.add(new THREE.LineSegments(EDGES[t], new THREE.LineBasicMaterial({
+        color: 0x9fe0ff, transparent: true, opacity: 0.9,
+      })));
       scene.add(g);
       this.ghosts[t] = g;
     }
   }
 
-  // Where would this piece go, given the player's feet position and view yaw?
-  computePlacement(type, feetPos, yaw) {
+  // Where would this piece go, given the player's feet position, view yaw and pitch?
+  // Looking up steeply builds one level higher; aiming down with a wall drops a level.
+  computePlacement(type, feetPos, yaw, pitch = 0) {
     const { a, dir } = quantizeDir(yaw);
-    const level = Math.floor(feetPos.y / CELL + 0.6);
+    let level = type === 'floor'
+      ? Math.floor((feetPos.y + 0.15) / CELL)
+      : Math.floor(feetPos.y / CELL + 0.6);
+    if (pitch > 0.5) level += 1;
+    if (pitch < -0.75 && type === 'wall') level -= 1;
+    level = Math.max(0, level);
+
     const pos = new THREE.Vector3();
     let rotX = 0;
 
@@ -91,6 +107,7 @@ export class BuildSystem {
     g.rotation.set(placement.rotX, placement.rotY, 0);
     const occupied = this.map.has(placement.key);
     g.material.color.set(occupied ? 0xff5252 : 0x4fc3f7);
+    g.material.opacity = 0.28 + Math.sin(this.ghostT * 6) * 0.08;
     g.visible = true;
   }
 
@@ -99,23 +116,28 @@ export class BuildSystem {
   }
 
   // Returns the new record, or null if that spot is taken.
-  place(placement) {
+  place(placement, color) {
     return this.placeRaw(placement.key, placement.type,
-      [placement.pos.x, placement.pos.y, placement.pos.z], placement.rotY);
+      [placement.pos.x, placement.pos.y, placement.pos.z], placement.rotY, color);
   }
 
-  placeRaw(key, type, posArr, rotY) {
+  placeRaw(key, type, posArr, rotY, color = 0x6f86ff) {
     if (this.map.has(key)) return null;
-    const mesh = new THREE.Mesh(GEO[type], buildMaterial());
+    const mesh = new THREE.Mesh(GEO[type], buildMaterial(color));
     mesh.rotation.order = 'YXZ';
     mesh.position.set(posArr[0], posArr[1], posArr[2]);
     mesh.rotation.y = rotY;
     if (type === 'ramp') mesh.rotation.x = Math.PI / 4;
     mesh.castShadow = mesh.receiveShadow = true;
     mesh.userData.key = key;
+    mesh.add(new THREE.LineSegments(EDGES[type], new THREE.LineBasicMaterial({
+      color: new THREE.Color(color).multiplyScalar(1.6), transparent: true, opacity: 0.7,
+    })));
+    mesh.scale.setScalar(0.6);
     this.group.add(mesh);
+    this.spawning.push({ mesh, t: 0 });
 
-    const rec = { key, type, hp: BUILD_HP, mesh };
+    const rec = { key, type, hp: BUILD_HP, mesh, color };
     if (type === 'ramp') {
       rec.ramp = {
         center: mesh.position.clone(),
@@ -135,15 +157,37 @@ export class BuildSystem {
     if (!rec) return false;
     rec.hp -= dmg;
     if (rec.hp <= 0) {
-      this.group.remove(rec.mesh);
-      rec.mesh.material.dispose();
       this.map.delete(key);
+      rec.mesh.userData.key = null;
+      this.dying.push({ mesh: rec.mesh, t: 0.16 });
       return true;
     }
     const f = rec.hp / BUILD_HP;
-    rec.mesh.material.color.setHex(BUILD_COLOR).multiplyScalar(0.45 + 0.55 * f);
-    rec.mesh.material.opacity = 0.55 + 0.37 * f;
+    rec.mesh.material.color.setHex(rec.color).multiplyScalar(0.45 + 0.55 * f);
+    rec.mesh.material.opacity = 0.55 + 0.35 * f;
     return false;
+  }
+
+  update(dt) {
+    this.ghostT += dt;
+    for (let i = this.spawning.length - 1; i >= 0; i--) {
+      const a = this.spawning[i];
+      a.t += dt;
+      const s = Math.min(1, 0.6 + (a.t / 0.12) * 0.4);
+      a.mesh.scale.setScalar(s);
+      if (s >= 1) this.spawning.splice(i, 1);
+    }
+    for (let i = this.dying.length - 1; i >= 0; i--) {
+      const a = this.dying[i];
+      a.t -= dt;
+      a.mesh.scale.setScalar(Math.max(0.01, a.t / 0.16));
+      a.mesh.material.opacity = (a.t / 0.16) * 0.9;
+      if (a.t <= 0) {
+        this.group.remove(a.mesh);
+        a.mesh.material.dispose();
+        this.dying.splice(i, 1);
+      }
+    }
   }
 
   // Surface height of a ramp at world (x, z), or -Infinity if outside its footprint.

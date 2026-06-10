@@ -21,16 +21,17 @@ First to **10 eliminations** wins the round.
 | `W A S D` | Move |
 | `Space` | Jump |
 | `Mouse` | Look |
-| `Left click` | Shoot / place build |
+| `Mouse wheel` | Cycle weapons / build pieces |
+| `Left click` | Shoot / swing / place build |
 | `Right click` | Aim (sniper scopes in) |
-| `1` `2` `3` | Assault Rifle / Shotgun / Sniper |
+| `1` `2` `3` `4` | Assault Rifle / Shotgun / Sniper / Pickaxe |
 | `Z` or `Q` | Build wall |
 | `X` | Build floor |
 | `C` | Build ramp |
 | `R` | Reload |
 | `Esc` | Release mouse |
 
-Builds snap to a grid, have HP, and can be shot down. Hold left click in build mode to turbo-build.
+Builds snap to a grid, have HP, and can be shot down. Hold left click in build mode to turbo-build; look up while building to place a level higher. Headshots deal bonus damage, rifles lose damage at long range, and the orange jump pads launch you into the air.
 
 ## 🛠 Run locally
 

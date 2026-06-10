@@ -46,6 +46,10 @@ function tone(freq, vol, dur, type = 'square') {
 
 export const sfx = {
   unlock() { ac(); }, // call on first user gesture
+  swing()    { burst(0.12, 0.12, 600); },
+  thunk()    { tone(140, 0.22, 0.1, 'triangle'); burst(0.15, 0.08, 500); },
+  pad()      { tone(330, 0.18, 0.12); setTimeout(() => tone(520, 0.16, 0.18), 60); },
+  headshot() { tone(1320, 0.14, 0.09); },
   shoot()    { burst(0.25, 0.12, 1800); tone(160, 0.1, 0.08, 'sawtooth'); },
   shotgun()  { burst(0.35, 0.22, 1200); tone(90, 0.15, 0.15, 'sawtooth'); },
   sniper()   { burst(0.35, 0.3, 2500); tone(70, 0.18, 0.25, 'sawtooth'); },

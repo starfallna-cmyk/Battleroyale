@@ -91,6 +91,7 @@ canvas { display: block; }
   text-shadow: 0 0 6px rgba(0,0,0,.9);
 }
 #hitmarker.show { opacity: 1; }
+#hitmarker.head { color: #ffd54f; font-size: 36px; }
 
 #damageFlash {
   position: absolute; inset: 0; opacity: 0;
