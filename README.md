@@ -4,7 +4,7 @@ A browser-based third-person build-fight shooter inspired by 1v1.lol. Build wall
 
 ## 🎮 Play
 
-Open the game in a browser (GitHub Pages link in the repo description), then:
+**▶ [Play it now](https://chezburgar.github.io/1v1-battle/)** — then:
 
 - **Practice** — solo arena with target dummies
 - **Create Game** — generates a 4-letter room code; send it to a friend
