@@ -30,25 +30,25 @@ function randomCode() {
   return c;
 }
 
-function startGame(isHost, roomCode) {
+function startGame(roomCode) {
+  if (game) return;
   menu.classList.add('hidden');
   hud.classList.remove('hidden');
   if (roomCode) {
     const badge = $('roomBadge');
-    badge.textContent = `ROOM ${roomCode}`;
+    badge.textContent = `ROOM ${roomCode} — share to invite (6 max)`;
     badge.classList.remove('hidden');
   }
-  game = new Game({ net, isHost, myName: myName(), container: document.body });
+  game = new Game({ net, myName: myName(), container: document.body });
   window.__game = game; // debug/test handle
 
-  if (net) {
+  if (net && !net.isHost) {
     net.onClose = () => {
       document.exitPointerLock();
       $('disconnectOverlay').classList.remove('hidden');
     };
   }
 
-  // pointer lock flow
   const canvas = game.renderer.domElement;
   const tryLock = () => { sfx.unlock(); canvas.requestPointerLock(); };
   canvas.addEventListener('click', tryLock);
@@ -63,7 +63,7 @@ function startGame(isHost, roomCode) {
 $('btnPractice').addEventListener('click', () => {
   if (busy || game) return;
   net = null;
-  startGame(true, null);
+  startGame(null);
 });
 
 $('btnCreate').addEventListener('click', () => {
@@ -73,10 +73,7 @@ $('btnCreate').addEventListener('click', () => {
   status.textContent = 'Creating room…';
   net = new Net();
   net.host(code, {
-    onWaiting: () => {
-      status.innerHTML = `Room code: <b style="font-size:26px;letter-spacing:6px">${code}</b><br>Send it to a friend — waiting for them to join…`;
-    },
-    onConnected: () => startGame(true, code),
+    onWaiting: () => startGame(code), // host plays right away; friends drop in
     onError: (msg) => { status.textContent = msg; busy = false; },
   });
 });
@@ -94,7 +91,7 @@ function doJoin() {
   status.textContent = 'Connecting…';
   net = new Net();
   net.join(code, {
-    onConnected: () => startGame(false, code),
+    onConnected: () => startGame(code),
     onError: (msg) => { status.textContent = msg; busy = false; },
   });
 }

@@ -1,16 +1,18 @@
 import * as THREE from 'three';
 
 // falloff: [fullDmgRange, maxRange, minMultiplier]
+// Balance: AR is the workhorse (22 dmg, gentle falloff); sniper no longer
+// one-shots the body (80) — only headshots (152) — and cycles slowly.
 export const WEAPONS = [
-  { name: 'Assault Rifle', dmg: 17, head: 1.6, rate: 0.115, mag: 30, reload: 1.6,
-    auto: true, spread: 0.011, bloom: 0.009, kick: 0.007, pellets: 1, range: 250,
-    zoom: 60, adsSpread: 0.45, falloff: [35, 120, 0.55], buildDmg: 17, sound: 'shoot', tracer: 0xffe082 },
-  { name: 'Shotgun', dmg: 9, head: 1.4, rate: 0.8, mag: 6, reload: 2.1,
+  { name: 'Assault Rifle', dmg: 22, head: 1.6, rate: 0.115, mag: 30, reload: 1.6,
+    auto: true, spread: 0.009, bloom: 0.008, kick: 0.006, pellets: 1, range: 250,
+    zoom: 60, adsSpread: 0.4, falloff: [35, 120, 0.65], buildDmg: 22, sound: 'shoot', tracer: 0xffe082 },
+  { name: 'Shotgun', dmg: 10, head: 1.4, rate: 0.8, mag: 6, reload: 2.1,
     auto: false, spread: 0.042, bloom: 0, kick: 0.035, pellets: 8, range: 45,
-    zoom: 66, adsSpread: 0.7, falloff: [9, 30, 0.3], buildDmg: 9, sound: 'shotgun', tracer: 0xffab66 },
-  { name: 'Sniper', dmg: 105, head: 1.9, rate: 1.4, mag: 1, reload: 1.8,
+    zoom: 66, adsSpread: 0.7, falloff: [9, 30, 0.3], buildDmg: 10, sound: 'shotgun', tracer: 0xffab66 },
+  { name: 'Sniper', dmg: 80, head: 1.9, rate: 1.8, mag: 1, reload: 2.4,
     auto: false, spread: 0.0008, bloom: 0, kick: 0.06, pellets: 1, range: 500,
-    zoom: 20, adsSpread: 0.05, falloff: null, buildDmg: 80, sound: 'sniper', tracer: 0x9be8ff, scope: true },
+    zoom: 20, adsSpread: 0.05, falloff: null, buildDmg: 60, sound: 'sniper', tracer: 0x9be8ff, scope: true },
   { name: 'Pickaxe', dmg: 20, head: 1, rate: 0.45, mag: Infinity, reload: 0,
     auto: true, spread: 0, bloom: 0, kick: 0, pellets: 1, range: 3.2,
     zoom: 70, adsSpread: 1, falloff: null, buildDmg: 35, sound: 'swing', tracer: null, melee: true },

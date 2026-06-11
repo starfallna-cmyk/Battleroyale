@@ -5,28 +5,30 @@ export const BUILD_HP = 60;
 export const BUILD_TYPES = ['wall', 'floor', 'ramp'];
 
 const RAMP_LEN = Math.sqrt(CELL * CELL * 2); // hypotenuse of a 4x4 ramp
+const T = 0.3; // panel thickness
 
-const GEO = {
-  wall:  new THREE.BoxGeometry(CELL, CELL, 0.3),
-  floor: new THREE.BoxGeometry(CELL, 0.3, CELL),
+// Sub-panel layouts (local coords) per type+edit state: [w, h, x, y]
+// Walls span x -2..2, y -2..2, thickness z.
+const WALL_EDITS = [
+  // 0: full
+  [[4, 4, 0, 0]],
+  // 1: doorway (1.4 wide, 2.6 tall, bottom center)
+  [[1.3, 4, -1.35, 0], [1.3, 4, 1.35, 0], [1.4, 1.4, 0, 1.3]],
+  // 2: window (1.6 x 1.4, mid height)
+  [[1.2, 4, -1.4, 0], [1.2, 4, 1.4, 0], [1.6, 1.5, 0, -1.25], [1.6, 1.1, 0, 1.45]],
+];
+export const EDIT_COUNT = { wall: 3, floor: 1, ramp: 2 }; // ramp edit = flip
+
+const GHOST_GEO = {
+  wall:  new THREE.BoxGeometry(CELL, CELL, T),
+  floor: new THREE.BoxGeometry(CELL, T, CELL),
   ramp:  new THREE.BoxGeometry(CELL, 0.35, RAMP_LEN),
-};
-const EDGES = {
-  wall:  new THREE.EdgesGeometry(GEO.wall),
-  floor: new THREE.EdgesGeometry(GEO.floor),
-  ramp:  new THREE.EdgesGeometry(GEO.ramp),
 };
 
 function buildMaterial(color) {
   return new THREE.MeshStandardMaterial({
     color, roughness: 0.5, metalness: 0.2,
     transparent: true, opacity: 0.9,
-  });
-}
-
-function ghostMaterial() {
-  return new THREE.MeshStandardMaterial({
-    color: 0x4fc3f7, transparent: true, opacity: 0.35, depthWrite: false,
   });
 }
 
@@ -46,28 +48,28 @@ function cellCenter(v) {
 
 export class BuildSystem {
   constructor(scene) {
+    this.scene = scene;
     this.group = new THREE.Group();
     scene.add(this.group);
-    this.map = new Map(); // key -> { key, type, hp, mesh, color, box?, ramp? }
-    this.spawning = [];   // pop-in animations
-    this.dying = [];      // destruction animations
+    this.map = new Map(); // key -> { key, type, hp, mesh(Group), color, edit, ry0, mat, edgeMat, boxes[], ramp? }
+    this.spawning = [];
+    this.dying = [];
     this.ghostT = 0;
 
     this.ghosts = {};
     for (const t of BUILD_TYPES) {
-      const g = new THREE.Mesh(GEO[t], ghostMaterial());
+      const g = new THREE.Mesh(GHOST_GEO[t], new THREE.MeshStandardMaterial({
+        color: 0x4fc3f7, transparent: true, opacity: 0.35, depthWrite: false,
+      }));
       g.rotation.order = 'YXZ';
       g.visible = false;
-      g.add(new THREE.LineSegments(EDGES[t], new THREE.LineBasicMaterial({
-        color: 0x9fe0ff, transparent: true, opacity: 0.9,
-      })));
+      g.add(new THREE.LineSegments(new THREE.EdgesGeometry(GHOST_GEO[t]),
+        new THREE.LineBasicMaterial({ color: 0x9fe0ff, transparent: true, opacity: 0.9 })));
       scene.add(g);
       this.ghosts[t] = g;
     }
   }
 
-  // Where would this piece go, given the player's feet position, view yaw and pitch?
-  // Looking up steeply builds one level higher; aiming down with a wall drops a level.
   computePlacement(type, feetPos, yaw, pitch = 0) {
     const { a, dir } = quantizeDir(yaw);
     let level = type === 'floor'
@@ -81,18 +83,16 @@ export class BuildSystem {
     let rotX = 0;
 
     if (type === 'wall') {
-      // On the edge between the player's cell and the next cell in the facing direction.
       const c = cellCenter(feetPos);
       pos.set(c.x + dir.x * (CELL / 2), level * CELL + CELL / 2, c.z + dir.z * (CELL / 2));
     } else {
-      // Floor / ramp occupy the cell in front of the player.
       const target = feetPos.clone().addScaledVector(dir, CELL * 0.65 + 1);
       const c = cellCenter(target);
       if (type === 'floor') {
-        pos.set(c.x, level * CELL + 0.15, c.z);
+        pos.set(c.x, level * CELL + T / 2, c.z);
       } else {
         pos.set(c.x, level * CELL + CELL / 2, c.z);
-        rotX = Math.PI / 4; // rises toward the facing direction
+        rotX = Math.PI / 4;
       }
     }
 
@@ -115,43 +115,106 @@ export class BuildSystem {
     for (const t of BUILD_TYPES) this.ghosts[t].visible = false;
   }
 
-  // Returns the new record, or null if that spot is taken.
   place(placement, color) {
     return this.placeRaw(placement.key, placement.type,
       [placement.pos.x, placement.pos.y, placement.pos.z], placement.rotY, color);
   }
 
-  placeRaw(key, type, posArr, rotY, color = 0x6f86ff) {
+  placeRaw(key, type, posArr, rotY, color = 0x6f86ff, edit = 0, hp = BUILD_HP) {
     if (this.map.has(key)) return null;
-    const mesh = new THREE.Mesh(GEO[type], buildMaterial(color));
-    mesh.rotation.order = 'YXZ';
-    mesh.position.set(posArr[0], posArr[1], posArr[2]);
-    mesh.rotation.y = rotY;
-    if (type === 'ramp') mesh.rotation.x = Math.PI / 4;
-    mesh.castShadow = mesh.receiveShadow = true;
-    mesh.userData.key = key;
-    mesh.add(new THREE.LineSegments(EDGES[type], new THREE.LineBasicMaterial({
-      color: new THREE.Color(color).multiplyScalar(1.6), transparent: true, opacity: 0.7,
-    })));
-    mesh.scale.setScalar(0.6);
-    this.group.add(mesh);
-    this.spawning.push({ mesh, t: 0 });
+    const group = new THREE.Group();
+    group.rotation.order = 'YXZ';
+    group.position.set(posArr[0], posArr[1], posArr[2]);
+    group.userData.key = key;
+    this.group.add(group);
 
-    const rec = { key, type, hp: BUILD_HP, mesh, color };
+    const rec = {
+      key, type, hp, color, edit: 0, ry0: rotY,
+      mesh: group,
+      mat: buildMaterial(color),
+      edgeMat: new THREE.LineBasicMaterial({
+        color: new THREE.Color(color).multiplyScalar(1.6), transparent: true, opacity: 0.7,
+      }),
+      boxes: [],
+    };
     if (type === 'ramp') {
       rec.ramp = {
-        center: mesh.position.clone(),
+        center: group.position.clone(),
         dir: new THREE.Vector3(-Math.sin(rotY), 0, -Math.cos(rotY)),
         baseY: posArr[1] - CELL / 2,
       };
-    } else {
-      rec.box = new THREE.Box3().setFromObject(mesh);
     }
     this.map.set(key, rec);
+    this._buildGeometry(rec, edit);
+    if (hp < BUILD_HP) this._tint(rec);
+
+    group.scale.setScalar(0.6);
+    this.spawning.push({ mesh: group, t: 0 });
     return rec;
   }
 
-  // Apply damage; returns true if the piece was destroyed.
+  // (Re)builds the panel meshes + collision boxes for a record's edit state.
+  _buildGeometry(rec, edit) {
+    const group = rec.mesh;
+    for (let i = group.children.length - 1; i >= 0; i--) {
+      const ch = group.children[i];
+      ch.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+      group.remove(ch);
+    }
+    rec.edit = edit;
+    rec.boxes = [];
+
+    const addPanel = (geo, x = 0, y = 0, z = 0, rx = 0) => {
+      const m = new THREE.Mesh(geo, rec.mat);
+      m.position.set(x, y, z);
+      m.rotation.x = rx;
+      m.castShadow = m.receiveShadow = true;
+      m.userData.key = rec.key;
+      m.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), rec.edgeMat));
+      group.add(m);
+      return m;
+    };
+
+    if (rec.type === 'wall') {
+      group.rotation.set(0, rec.ry0, 0);
+      for (const [w, h, x, y] of WALL_EDITS[edit]) addPanel(new THREE.BoxGeometry(w, h, T), x, y, 0);
+    } else if (rec.type === 'floor') {
+      group.rotation.set(0, rec.ry0, 0);
+      addPanel(new THREE.BoxGeometry(CELL, T, CELL));
+    } else { // ramp — edit 1 flips the slope direction
+      const ry = rec.ry0 + (edit ? Math.PI : 0);
+      group.rotation.set(0, ry, 0);
+      const slab = addPanel(new THREE.BoxGeometry(CELL, 0.35, RAMP_LEN), 0, 0, 0, Math.PI / 4);
+      slab.rotation.order = 'YXZ';
+      rec.ramp.dir.set(-Math.sin(ry), 0, -Math.cos(ry));
+    }
+
+    // collision boxes from world transforms (ramps use the surface fn instead)
+    if (rec.type !== 'ramp') {
+      group.updateMatrixWorld(true);
+      for (const ch of group.children) rec.boxes.push(new THREE.Box3().setFromObject(ch));
+    }
+  }
+
+  // Cycle a piece's edit state (wall: full -> door -> window, ramp: flip).
+  // Returns the new edit value, or null if the piece can't be edited.
+  cycleEdit(key) {
+    const rec = this.map.get(key);
+    if (!rec) return null;
+    const count = EDIT_COUNT[rec.type];
+    if (count < 2) return null;
+    const e = (rec.edit + 1) % count;
+    this._buildGeometry(rec, e);
+    return e;
+  }
+
+  applyEdit(key, e) {
+    const rec = this.map.get(key);
+    if (!rec || rec.edit === e) return false;
+    this._buildGeometry(rec, e);
+    return true;
+  }
+
   damage(key, dmg) {
     const rec = this.map.get(key);
     if (!rec) return false;
@@ -159,13 +222,39 @@ export class BuildSystem {
     if (rec.hp <= 0) {
       this.map.delete(key);
       rec.mesh.userData.key = null;
-      this.dying.push({ mesh: rec.mesh, t: 0.16 });
+      rec.mesh.traverse(o => { o.userData.key = null; });
+      this.dying.push({ mesh: rec.mesh, mat: rec.mat, t: 0.16 });
       return true;
     }
-    const f = rec.hp / BUILD_HP;
-    rec.mesh.material.color.setHex(rec.color).multiplyScalar(0.45 + 0.55 * f);
-    rec.mesh.material.opacity = 0.55 + 0.35 * f;
+    this._tint(rec);
     return false;
+  }
+
+  _tint(rec) {
+    const f = rec.hp / BUILD_HP;
+    rec.mat.color.setHex(rec.color).multiplyScalar(0.45 + 0.55 * f);
+    rec.mat.opacity = 0.55 + 0.35 * f;
+  }
+
+  // Full state for late joiners.
+  serialize() {
+    const out = [];
+    for (const rec of this.map.values()) {
+      out.push({
+        k: rec.key, ty: rec.type,
+        p: [rec.mesh.position.x, rec.mesh.position.y, rec.mesh.position.z],
+        ry: rec.ry0, c: rec.color, e: rec.edit, hp: rec.hp,
+      });
+    }
+    return out;
+  }
+
+  loadSnapshot(arr) {
+    for (const b of arr || []) {
+      const rec = this.placeRaw(b.k, b.ty, b.p, b.ry, b.c, b.e || 0, b.hp);
+      if (rec) rec.mesh.scale.setScalar(1);
+    }
+    this.spawning.length = 0;
   }
 
   update(dt) {
@@ -181,10 +270,11 @@ export class BuildSystem {
       const a = this.dying[i];
       a.t -= dt;
       a.mesh.scale.setScalar(Math.max(0.01, a.t / 0.16));
-      a.mesh.material.opacity = (a.t / 0.16) * 0.9;
+      a.mat.opacity = (a.t / 0.16) * 0.9;
       if (a.t <= 0) {
         this.group.remove(a.mesh);
-        a.mesh.material.dispose();
+        a.mesh.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+        a.mat.dispose();
         this.dying.splice(i, 1);
       }
     }
@@ -194,7 +284,7 @@ export class BuildSystem {
   static rampHeightAt(ramp, x, z) {
     const dx = x - ramp.center.x, dz = z - ramp.center.z;
     if (Math.abs(dx) > CELL / 2 || Math.abs(dz) > CELL / 2) return -Infinity;
-    const t = (dx * ramp.dir.x + dz * ramp.dir.z + CELL / 2) / CELL; // 0 near edge -> 1 far edge
+    const t = (dx * ramp.dir.x + dz * ramp.dir.z + CELL / 2) / CELL;
     return ramp.baseY + Math.max(0, Math.min(1, t)) * CELL + 0.18;
   }
 }

@@ -34,8 +34,9 @@
       <div id="menuStatus" class="menu-status"></div>
 
       <div class="controls-help">
-        <div><b>WASD</b> move &middot; <b>SPACE</b> jump &middot; <b>LMB</b> shoot / place &middot; <b>RMB</b> aim &middot; <b>WHEEL</b> cycle</div>
-        <div><b>1 2 3</b> weapons &middot; <b>4</b> pickaxe &middot; <b>Z</b> wall &middot; <b>X</b> floor &middot; <b>C</b> ramp &middot; <b>Q</b> quick wall &middot; <b>R</b> reload</div>
+        <div><b>WASD</b> move &middot; <b>SPACE</b> jump / drop from bus &middot; <b>LMB</b> shoot / place &middot; <b>RMB</b> aim &middot; <b>WHEEL</b> cycle</div>
+        <div><b>1 2 3</b> weapons &middot; <b>4</b> pickaxe &middot; <b>Z</b> wall &middot; <b>X</b> floor &middot; <b>C</b> ramp &middot; <b>F</b> edit build &middot; <b>R</b> reload</div>
+        <div>Up to <b>6 players</b> per room — friends can join mid-match</div>
       </div>
     </div>
   </div>
@@ -47,13 +48,8 @@
     <div id="damageFlash"></div>
     <div id="scopeOverlay" class="hidden"></div>
 
-    <div id="scoreboard">
-      <span id="nameMe">You</span>
-      <span id="scoreMe">0</span>
-      <span class="score-sep">:</span>
-      <span id="scoreFoe">0</span>
-      <span id="nameFoe">Foe</span>
-    </div>
+    <div id="scoreList"></div>
+    <div id="prompt" class="hidden"></div>
 
     <div id="roomBadge" class="hidden"></div>
     <div id="killfeed"></div>
