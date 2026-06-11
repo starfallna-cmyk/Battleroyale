@@ -6,13 +6,13 @@ A browser-based third-person build-fight shooter inspired by 1v1.lol and Fortnit
 
 **▶ [Play it now](https://chezburgar.github.io/1v1-battle/)** — then:
 
-- **Practice** — solo arena with target dummies
+- **Practice** — solo arena with target dummies (respawns on)
 - **Create Game** — generates a 4-letter room code; share it with up to 5 friends
-- **Join Game** — enter a room code; you can join mid-match and drop in
+- **Join Game** — enter a room code; if a round is running you spectate until the next one
 
 Online play is peer-to-peer (WebRTC via PeerJS) with the host relaying for the lobby, so everyone just needs the page open in a modern browser.
 
-Every match starts on the **battle bus** — press `Space` to drop, glide down (hold `Shift` to dive), and fight across a map with houses you can enter, a warehouse, trees, rocks, and jump pads. First to **10 eliminations** wins the round.
+Online matches are **battle royale**: everyone waits in the lobby and **readies up**, then the round starts together on the **battle bus** — press `Space` to drop, glide down (hold `Shift` to dive). **One life per round** — die and you spectate (free-fly camera) until it ends. Last player standing wins the round and a 👑 crown; then it's back to the lobby for the next round. Builds are wiped between rounds.
 
 ## ⌨️ Controls
 

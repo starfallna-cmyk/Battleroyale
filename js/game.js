@@ -28,6 +28,11 @@ const BUS_TO = new THREE.Vector3(95, 42, 55);
 
 function el(id) { return document.getElementById(id); }
 
+function esc(t) {
+  return String(t).replace(/[&<>"]/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
 function makeHpBar() {
   const canvas = document.createElement('canvas');
   canvas.width = 96; canvas.height = 14;
@@ -134,12 +139,16 @@ function makeBus() {
 }
 
 export class Game {
-  constructor({ net, myName, container }) {
+  constructor({ net, myName, container, roomCode }) {
     this.net = net;
     this.myId = net ? net.myId : 0;
     this.myName = (myName || 'Player').slice(0, 12);
     this.over = false;
     this.myColor = COLORS[this.myId % COLORS.length];
+    this.state = 'match'; // 'lobby' | 'match' | 'roundover' (net games start in lobby)
+    this.myReady = false;
+    this.lobbyAngle = 0;
+    this.roomCode = roomCode || null;
 
     // --- renderer / scene ---
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -199,17 +208,24 @@ export class Game {
 
     // --- other players & scores ---
     this.players = new Map(); // id -> remote player
-    this.scores = new Map([[this.myId, { name: this.myName, kills: 0 }]]);
+    this.scores = new Map([[this.myId, { name: this.myName, kills: 0, wins: 0, ready: false, alive: false }]]);
 
     if (net) {
       net.onMessage = (from, m) => this._handleMsg(from, m);
-      net.onPeerLeave = (id) => this._removePlayer(id);
+      net.onPeerLeave = (id) => {
+        this._removePlayer(id);
+        this._refreshLobby();
+        this._maybeStart();
+        this._checkRound();
+      };
       if (net.isHost) {
         net.onPeerJoin = (id) => {
           net.sendTo(id, {
             t: 'welcome',
-            roster: [...this.scores.entries()].map(([pid, s]) => [pid, s.name, s.kills]),
-            builds: this.builds.serialize(),
+            roster: [...this.scores.entries()].map(([pid, s]) =>
+              [pid, s.name, s.wins, s.ready ? 1 : 0, s.alive ? 1 : 0]),
+            state: this.state === 'match' ? 'match' : 'lobby',
+            builds: this.state === 'match' ? this.builds.serialize() : [],
           });
         };
       }
@@ -258,18 +274,24 @@ export class Game {
     this.ui = {
       hpFill: el('hpFill'), hpText: el('hpText'),
       ammoText: el('ammoText'), weaponName: el('weaponName'),
-      scoreList: el('scoreList'),
+      scoreList: el('scoreList'), aliveBadge: el('aliveBadge'),
       killfeed: el('killfeed'), hitmarker: el('hitmarker'),
       damageFlash: el('damageFlash'), scope: el('scopeOverlay'),
       deathOverlay: el('deathOverlay'), respawnTimer: el('respawnTimer'),
+      deathSub: el('deathSub'), lockOverlay: el('lockOverlay'),
       banner: el('banner'), crosshair: el('crosshair'), prompt: el('prompt'),
+      lobby: el('lobby'), lobbyList: el('lobbyList'), lobbyCode: el('lobbyCode'),
+      btnReady: el('btnReady'), lobbyStatus: el('lobbyStatus'),
     };
+    this.ui.btnReady.addEventListener('click', () => this._toggleReady());
+    this.ui.lobbyCode.textContent = this.roomCode ? `ROOM ${this.roomCode}` : '';
     this._refreshHud();
     this._refreshScores();
     this._refreshSlots();
 
     this.raycaster = new THREE.Raycaster();
     this.clock = new THREE.Clock();
+    if (net) this._enterLobby();
     this.renderer.setAnimationLoop(() => this._frame());
   }
 
@@ -292,7 +314,7 @@ export class Game {
     avatar.group.add(p.hpBar.sprite, p.label);
     this.scene.add(avatar.group);
     this.players.set(id, p);
-    if (!this.scores.has(id)) this.scores.set(id, { name: p.name, kills: 0 });
+    if (!this.scores.has(id)) this.scores.set(id, { name: p.name, kills: 0, wins: 0, ready: false, alive: false });
     this._refreshScores();
     return p;
   }
@@ -401,7 +423,7 @@ export class Game {
 
   // Edit the build piece you're aiming at (F): walls cycle door/window, ramps flip.
   _tryEdit() {
-    if (this.dead || this.phase !== 'normal' || this.editCd > 0) return;
+    if (this.dead || this.state !== 'match' || this.phase !== 'normal' || this.editCd > 0) return;
     const dir = new THREE.Vector3();
     this.camera.getWorldDirection(dir);
     this.raycaster.set(this.camera.position, dir);
@@ -421,11 +443,15 @@ export class Game {
   // ===================== frame =====================
   _frame() {
     const dt = Math.min(this.clock.getDelta(), 0.05);
-    if (this.phase === 'bus') {
+    if (this.state === 'lobby' || this.state === 'roundover') {
+      // gameplay frozen; lobby orbit camera / results banner
+    } else if (this.phase === 'bus') {
       this._busTick(dt);
     } else if (!this.dead) {
       this._movement(dt);
       this._combat(dt);
+    } else if (this.net) {
+      this._spectate(dt);
     } else {
       this._deathTick(dt);
     }
@@ -438,14 +464,39 @@ export class Game {
     this.renderer.render(this.scene, this.camera);
   }
 
+  // free-fly spectator after elimination (battle royale)
+  _spectate(dt) {
+    if (!this._locked()) return;
+    let ix = 0, iz = 0;
+    if (this.keys['KeyW']) iz += 1;
+    if (this.keys['KeyS']) iz -= 1;
+    if (this.keys['KeyD']) ix += 1;
+    if (this.keys['KeyA']) ix -= 1;
+    const sp = 18;
+    const look = new THREE.Vector3(
+      -Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch),
+      -Math.cos(this.yaw) * Math.cos(this.pitch));
+    const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
+    this.pos.addScaledVector(look, iz * sp * dt).addScaledVector(right, ix * sp * dt);
+    if (this.keys['Space']) this.pos.y += sp * dt;
+    if (this.keys['ShiftLeft'] || this.keys['ShiftRight']) this.pos.y -= sp * dt;
+    this.pos.x = Math.max(-ARENA, Math.min(ARENA, this.pos.x));
+    this.pos.z = Math.max(-ARENA, Math.min(ARENA, this.pos.z));
+    this.pos.y = Math.max(1, Math.min(70, this.pos.y));
+  }
+
   _updatePrompt() {
     const p = this.ui.prompt;
-    if (this.phase === 'bus') {
+    if (this.state === 'match' && this.phase === 'bus') {
       const left = Math.max(0, Math.ceil((1 - this.busT) * BUS_TIME));
       p.textContent = `🚌 SPACE to drop — auto in ${left}s`;
       p.classList.remove('hidden');
-    } else if (this.phase === 'sky') {
+    } else if (this.state === 'match' && this.phase === 'sky') {
       p.textContent = '🪂 Hold SHIFT to dive';
+      p.classList.remove('hidden');
+    } else if (this.state === 'match' && this.dead && this.net) {
+      const aliveN = [...this.scores.values()].filter(s => s.alive).length;
+      p.textContent = `👻 Spectating — ${aliveN} alive`;
       p.classList.remove('hidden');
     } else {
       p.classList.add('hidden');
@@ -705,7 +756,7 @@ export class Game {
   }
 
   _tryFire() {
-    if (this.dead || this.phase !== 'normal' || this.mode !== 'weapon' ||
+    if (this.dead || this.state !== 'match' || this.phase !== 'normal' || this.mode !== 'weapon' ||
         this.shootCd > 0 || this.reloadT > 0 || !this._locked()) return;
     const w = WEAPONS[this.weaponIdx];
     if (!w.melee && this.ammo[this.weaponIdx] <= 0) { this._startReload(); return; }
@@ -898,7 +949,7 @@ export class Game {
 
   // ===================== damage / death =====================
   _takeDamage(dmg, fromId) {
-    if (this.dead || this.over || this.phase === 'bus') return;
+    if (this.dead || this.over || this.phase === 'bus' || this.state !== 'match') return;
     this.hp -= dmg;
     this.lastHitBy = fromId;
     sfx.hurt();
@@ -914,16 +965,32 @@ export class Game {
 
   _die() {
     this.dead = true;
-    this.respawnT = RESPAWN_TIME;
     this.meAvatar.group.visible = false;
     const killer = this.lastHitBy !== null ? this.scores.get(this.lastHitBy) : null;
     if (killer) killer.kills++;
     sfx.die();
     this._feed(`☠ ${killer ? killer.name : 'Someone'} eliminated you`);
-    if (this.net) this.net.send({ t: 'die', by: this.lastHitBy });
+    if (!this.net) {
+      // practice: respawn as before
+      this.respawnT = RESPAWN_TIME;
+      this.ui.deathSub.innerHTML = 'Respawning in <span id="respawnTimer">3</span>…';
+      this.ui.respawnTimer = el('respawnTimer');
+      this.ui.deathOverlay.classList.remove('hidden');
+      this._refreshScores();
+      return;
+    }
+    // battle royale: one life — spectate until the round ends
+    this.net.send({ t: 'die', by: this.lastHitBy });
+    this.scores.get(this.myId).alive = false;
+    this.ui.deathSub.textContent = 'Spectating until the round ends — WASD to fly';
     this.ui.deathOverlay.classList.remove('hidden');
+    setTimeout(() => {
+      if (this.dead && this.state === 'match') this.ui.deathOverlay.classList.add('hidden');
+    }, 2600);
+    this.pitch = -0.3;
+    this.pos.y = Math.max(this.pos.y, 6);
     this._refreshScores();
-    this._checkWin();
+    this._checkRound();
   }
 
   _deathTick(dt) {
@@ -951,28 +1018,162 @@ export class Game {
     this._refreshHud();
   }
 
-  _checkWin() {
-    if (this.over) return;
-    let winner = null;
-    for (const [id, s] of this.scores) {
-      if (s.kills >= WIN_KILLS) { winner = { id, ...s }; break; }
+  // ===================== battle royale rounds & lobby =====================
+  _toggleReady() {
+    if (this.state !== 'lobby' || !this.net) return;
+    this.myReady = !this.myReady;
+    this.scores.get(this.myId).ready = this.myReady;
+    sfx.unlock();
+    sfx.reload();
+    this.net.send({ t: 'ready', v: this.myReady ? 1 : 0 });
+    this._refreshLobby();
+    this._maybeStart();
+  }
+
+  // host: start the round once 2+ players are all ready
+  _maybeStart() {
+    if (!this.net || !this.net.isHost || this.state !== 'lobby') return;
+    if (this.scores.size < 2) return;
+    for (const s of this.scores.values()) if (!s.ready) return;
+    this.net.send({ t: 'start' });
+    this._startMatch();
+  }
+
+  _startMatch() {
+    this.state = 'match';
+    this.builds.clearAll();
+    for (const s of this.scores.values()) { s.kills = 0; s.alive = true; }
+    for (const p of this.players.values()) {
+      p.alive = true;
+      p.avatar.group.visible = true;
+      p.hpBar.draw(100);
+      p.targetPos.copy(BUS_FROM);
+      p.avatar.group.position.copy(BUS_FROM);
+      p.gliding = true;
     }
-    if (!winner) return;
-    this.over = true;
-    const won = winner.id === this.myId;
-    this.ui.banner.textContent = won ? '🏆 VICTORY!' : `👑 ${winner.name} WINS`;
+    this.hp = 100;
+    this.dead = false;
+    this.lastHitBy = null;
+    this.ammo = WEAPONS.map(w => w.mag);
+    this.reloadT = 0;
+    this.mode = 'weapon';
+    this.weaponIdx = 0;
+    this.meAvatar.group.visible = true;
+    this.vel.set(0, 0, 0);
+    this.phase = 'bus';
+    this.busT = 0;
+    this.busBob = 0;
+    this.bus.visible = true;
+    this.yaw = Math.atan2(-this.busDir.x, -this.busDir.z);
+    this.pitch = 0;
+    this.ui.lobby.classList.add('hidden');
+    this.ui.deathOverlay.classList.add('hidden');
+    this.ui.banner.classList.add('hidden');
+    if (!this._locked()) this.ui.lockOverlay.classList.remove('hidden');
+    this._refreshHud();
+    this._refreshScores();
+    this._refreshSlots();
+  }
+
+  // host: end the round when at most one player is left standing
+  _checkRound() {
+    if (!this.net || !this.net.isHost || this.state !== 'match') return;
+    const alive = [...this.scores.entries()].filter(([, s]) => s.alive);
+    if (this.scores.size >= 2 && alive.length <= 1) {
+      const w = alive.length ? alive[0][0] : null;
+      this.net.send({ t: 'roundover', w });
+      this._endRound(w);
+    }
+  }
+
+  _endRound(w) {
+    if (this.state !== 'match') return;
+    this.state = 'roundover';
+    sfx.busStop();
+    // reset ready states here (synchronized across peers) so a fast guest's
+    // ready click in the next lobby can't be clobbered by a slower peer's reset
+    this.myReady = false;
+    for (const s of this.scores.values()) s.ready = false;
+    const winScore = (w !== null && w !== undefined) ? this.scores.get(w) : null;
+    if (winScore) winScore.wins++;
+    this.ui.banner.textContent = w === this.myId ? '🏆 VICTORY ROYALE!'
+      : winScore ? `👑 ${winScore.name} WINS THE ROUND` : 'ROUND OVER';
     this.ui.banner.classList.remove('hidden');
-    won ? sfx.win() : sfx.lose();
-    setTimeout(() => {
-      for (const s of this.scores.values()) s.kills = 0;
-      this.over = false;
-      this.ui.banner.classList.add('hidden');
-      this._refreshScores();
-    }, 4000);
+    (w === this.myId) ? sfx.win() : sfx.lose();
+    this.ui.deathOverlay.classList.add('hidden');
+    this.mouseDown = false;
+    this._refreshScores();
+    setTimeout(() => this._enterLobby(), 5000);
+  }
+
+  _enterLobby() {
+    this.state = 'lobby';
+    this.phase = 'normal';
+    this.dead = false;
+    this.hp = 100;
+    this.busT = 0;
+    this.bus.visible = false;
+    sfx.busStop();
+    this.builds.clearAll();
+    for (const s of this.scores.values()) { s.alive = false; s.kills = 0; }
+    for (const p of this.players.values()) {
+      p.alive = true;
+      p.avatar.group.visible = true;
+      p.hpBar.draw(100);
+      p.gliding = false;
+      p.speed = 0;
+      p.grounded = true;
+    }
+    this.meAvatar.group.visible = true;
+    this.mouseDown = false;
+    this.ads = false;
+    if (document.exitPointerLock) document.exitPointerLock();
+    this.builds.hideGhosts();
+    this.ui.lockOverlay.classList.add('hidden');
+    this.ui.banner.classList.add('hidden');
+    this.ui.deathOverlay.classList.add('hidden');
+    this.ui.scope.classList.add('hidden');
+    this.ui.lobby.classList.remove('hidden');
+    this._refreshLobby();
+    this._refreshScores();
+    this._refreshHud();
+    this._maybeStart(); // guests may have readied during the results banner
+  }
+
+  _refreshLobby() {
+    if (!this.net || !this.ui) return;
+    const rows = [...this.scores.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([id, s]) => {
+        const color = '#' + COLORS[id % COLORS.length].toString(16).padStart(6, '0');
+        const me = id === this.myId;
+        return `<div class="lobby-row${s.ready ? ' ready' : ''}">` +
+          `<span class="dot" style="background:${color}"></span>` +
+          `<span class="lname">${esc(s.name)}${me ? ' (you)' : ''}</span>` +
+          `<span class="lwins">👑 ${s.wins}</span>` +
+          `<span class="lready">${s.ready ? 'READY ✔' : 'waiting…'}</span></div>`;
+      });
+    this.ui.lobbyList.innerHTML = rows.join('');
+    this.ui.btnReady.textContent = this.myReady ? '✖ UNREADY' : '✔ READY UP';
+    this.ui.btnReady.classList.toggle('is-ready', this.myReady);
+    const allReady = [...this.scores.values()].every(s => s.ready);
+    this.ui.lobbyStatus.textContent = this.scores.size < 2
+      ? 'Waiting for players — share the room code!'
+      : allReady ? 'Starting…' : 'Round starts when everyone is ready';
   }
 
   // ===================== camera & avatars =====================
   _updateCamera(dt) {
+    if (this.state === 'lobby') {
+      // slow cinematic orbit around the podium
+      this.lobbyAngle += dt * 0.12;
+      const a = this.lobbyAngle;
+      this.camera.position.set(Math.sin(a) * 13, 5.5, 13 * Math.cos(a));
+      this.camera.lookAt(0, 3, 1);
+      this.camera.fov += (60 - this.camera.fov) * Math.min(1, dt * 5);
+      this.camera.updateProjectionMatrix();
+      return;
+    }
     const w = WEAPONS[this.weaponIdx];
     const targetFov = (this.ads && this.mode === 'weapon' && this.phase === 'normal') ? w.zoom : 75;
     this.camera.fov += (targetFov - this.camera.fov) * Math.min(1, dt * 12);
@@ -1009,6 +1210,18 @@ export class Game {
   }
 
   _updateAvatars(dt) {
+    if (this.state === 'lobby') {
+      // line everyone up on the center platform
+      const ids = [this.myId, ...this.players.keys()].sort((a, b) => a - b);
+      ids.forEach((id, i) => {
+        const av = id === this.myId ? this.meAvatar : this.players.get(id).avatar;
+        av.group.visible = true;
+        av.group.position.set((i - (ids.length - 1) / 2) * 1.7, 1.5, 2);
+        av.group.rotation.y = 0;
+        av.update(dt, { speed: 0, grounded: true, pitch: 0, item: 0 });
+      });
+      return;
+    }
     this.meAvatar.group.visible = this.phase !== 'bus' && !this.dead;
     this.meAvatar.group.position.copy(this.pos);
     this.meAvatar.group.rotation.y = this.yaw;
@@ -1042,7 +1255,7 @@ export class Game {
 
   // ===================== networking =====================
   _netTick(dt) {
-    if (!this.net) return;
+    if (!this.net || this.state !== 'match' || this.dead) return;
     this.netT -= dt;
     if (this.netT <= 0) {
       this.netT = NET_RATE;
@@ -1064,18 +1277,54 @@ export class Game {
     switch (m.t) {
       case 'hello':
         this._setPlayerName(from, (m.name || 'Player').slice(0, 12));
+        this._refreshLobby();
+        this._maybeStart();
         break;
       case 'welcome': {
-        for (const [pid, name, kills] of m.roster || []) {
+        for (const [pid, name, wins, ready, alive] of m.roster || []) {
           if (pid === this.myId) continue;
           this._setPlayerName(pid, name);
           const s = this.scores.get(pid);
-          if (s) s.kills = kills;
+          if (s) { s.wins = wins || 0; s.ready = !!ready; s.alive = !!alive; }
         }
-        this.builds.loadSnapshot(m.builds);
+        if (m.state === 'match') {
+          // a round is already running — spectate it until it ends
+          this.state = 'match';
+          this.phase = 'normal';
+          this.dead = true;
+          this.scores.get(this.myId).alive = false;
+          for (const [pid, s] of this.scores) {
+            const p = this.players.get(pid);
+            if (p && !s.alive) { p.alive = false; p.avatar.group.visible = false; }
+          }
+          this.meAvatar.group.visible = false;
+          this.bus.visible = false;
+          this.pos.set(0, 28, 42);
+          this.yaw = 0;
+          this.pitch = -0.45;
+          this.builds.loadSnapshot(m.builds);
+          this.ui.lobby.classList.add('hidden');
+          this.ui.lockOverlay.classList.remove('hidden');
+          this._feed('Round in progress — you join the next one');
+        }
+        this._refreshLobby();
         this._refreshScores();
         break;
       }
+      case 'ready': {
+        this._getPlayer(from);
+        const s = this.scores.get(from);
+        if (s) s.ready = !!m.v;
+        this._refreshLobby();
+        this._maybeStart();
+        break;
+      }
+      case 'start':
+        this._startMatch();
+        break;
+      case 'roundover':
+        this._endRound(m.w);
+        break;
       case 's': {
         const p = this._getPlayer(from);
         p.targetPos.set(m.p[0], m.p[1], m.p[2]);
@@ -1105,19 +1354,20 @@ export class Game {
       case 'hp': {
         const p = this._getPlayer(from);
         p.hpBar.draw(m.v);
-        if (m.v >= 100) { p.alive = true; p.avatar.group.visible = true; }
         break;
       }
       case 'die': {
         const p = this._getPlayer(from);
         p.alive = false;
         p.avatar.group.visible = false;
+        const s = this.scores.get(from);
+        if (s) s.alive = false;
         const killer = m.by !== null && m.by !== undefined ? this.scores.get(m.by) : null;
         if (killer) killer.kills++;
         if (m.by === this.myId) { sfx.kill(); }
         this._feed(`⚔ ${killer ? killer.name : 'Someone'} eliminated ${p.name}`);
         this._refreshScores();
-        this._checkWin();
+        this._checkRound();
         break;
       }
       case 'build':
@@ -1163,18 +1413,27 @@ export class Game {
   }
 
   _refreshScores() {
-    const esc = (t) => String(t).replace(/[&<>"]/g, (c) =>
-      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const inMatch = this.net && this.state === 'match';
     const rows = [...this.scores.entries()]
-      .sort((a, b) => b[1].kills - a[1].kills)
+      .sort((a, b) => (b[1].wins - a[1].wins) || (b[1].kills - a[1].kills))
       .map(([id, s]) => {
         const me = id === this.myId;
         const color = '#' + COLORS[id % COLORS.length].toString(16).padStart(6, '0');
+        const dead = inMatch && !s.alive ? ' 💀' : '';
         return `<div class="score-row${me ? ' me' : ''}">` +
           `<span class="dot" style="background:${color}"></span>` +
-          `<span class="sname">${esc(s.name)}</span><span class="skills">${s.kills}</span></div>`;
+          `<span class="sname">${esc(s.name)}${dead}</span>` +
+          `<span class="skills">${s.kills}${this.net ? ` · 👑${s.wins}` : ''}</span></div>`;
       });
     this.ui.scoreList.innerHTML = rows.join('');
+
+    if (inMatch) {
+      const aliveN = [...this.scores.values()].filter(s => s.alive).length;
+      this.ui.aliveBadge.textContent = `👥 ${aliveN} ALIVE`;
+      this.ui.aliveBadge.classList.remove('hidden');
+    } else {
+      this.ui.aliveBadge.classList.add('hidden');
+    }
   }
 
   _refreshSlots() {

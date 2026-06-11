@@ -39,7 +39,7 @@ function startGame(roomCode) {
     badge.textContent = `ROOM ${roomCode} — share to invite (6 max)`;
     badge.classList.remove('hidden');
   }
-  game = new Game({ net, myName: myName(), container: document.body });
+  game = new Game({ net, myName: myName(), container: document.body, roomCode });
   window.__game = game; // debug/test handle
 
   if (net && !net.isHost) {
@@ -50,14 +50,18 @@ function startGame(roomCode) {
   }
 
   const canvas = game.renderer.domElement;
-  const tryLock = () => { sfx.unlock(); canvas.requestPointerLock(); };
+  const tryLock = () => {
+    if (game.state !== 'match') return; // mouse stays free in the lobby
+    sfx.unlock();
+    canvas.requestPointerLock();
+  };
   canvas.addEventListener('click', tryLock);
   lockOverlay.addEventListener('click', tryLock);
   document.addEventListener('pointerlockchange', () => {
     const locked = document.pointerLockElement === canvas;
-    lockOverlay.classList.toggle('hidden', locked);
+    lockOverlay.classList.toggle('hidden', locked || game.state !== 'match');
   });
-  tryLock();
+  if (!net) tryLock(); // practice goes straight in; net games sit in the lobby first
 }
 
 $('btnPractice').addEventListener('click', () => {

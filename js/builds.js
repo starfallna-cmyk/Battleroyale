@@ -259,6 +259,21 @@ export class BuildSystem {
     this.spawning.length = 0;
   }
 
+  // Remove every placed piece (between battle-royale rounds).
+  clearAll() {
+    for (const rec of this.map.values()) {
+      this.group.remove(rec.mesh);
+      rec.mesh.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+      rec.mat.dispose();
+      rec.edgeMat.dispose();
+    }
+    this.map.clear();
+    this.spawning.length = 0;
+    for (const a of this.dying) this.group.remove(a.mesh);
+    this.dying.length = 0;
+    this.hideGhosts();
+  }
+
   update(dt) {
     this.ghostT += dt;
     for (let i = this.spawning.length - 1; i >= 0; i--) {

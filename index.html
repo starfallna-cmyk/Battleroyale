@@ -49,6 +49,7 @@
     <div id="scopeOverlay" class="hidden"></div>
 
     <div id="scoreList"></div>
+    <div id="aliveBadge" class="hidden">👥 0 ALIVE</div>
     <div id="prompt" class="hidden"></div>
 
     <div id="roomBadge" class="hidden"></div>
@@ -86,7 +87,18 @@
   <div id="deathOverlay" class="screen overlay hidden">
     <div class="overlay-box">
       <h2 class="red">💀 ELIMINATED</h2>
-      <p>Respawning in <span id="respawnTimer">3</span>…</p>
+      <p id="deathSub">Respawning in <span id="respawnTimer">3</span>…</p>
+    </div>
+  </div>
+
+  <div id="lobby" class="screen overlay hidden">
+    <div class="lobby-box">
+      <h2>🏟️ LOBBY</h2>
+      <div id="lobbyCode" class="lobby-code"></div>
+      <div id="lobbyList"></div>
+      <button id="btnReady" class="btn btn-main">✔ READY UP</button>
+      <div id="lobbyStatus" class="lobby-status"></div>
+      <div class="lobby-hint">Battle royale — one life per round, last one standing wins the crown</div>
     </div>
   </div>
 

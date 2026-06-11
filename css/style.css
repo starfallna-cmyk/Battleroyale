@@ -128,6 +128,36 @@ canvas { display: block; }
 }
 @keyframes promptPulse { 50% { transform: translateX(-50%) scale(1.06); } }
 
+#aliveBadge {
+  position: absolute; top: 14px; right: 14px;
+  background: rgba(10, 16, 32, .78); border-radius: 10px;
+  padding: 8px 16px; color: #8bea5a; font-weight: 900; font-size: 18px;
+}
+#aliveBadge ~ #killfeed { top: 56px; }
+
+/* ===== Lobby ===== */
+.lobby-box {
+  text-align: center; min-width: 380px; max-width: 460px;
+  background: rgba(10, 16, 32, .85); border-radius: 18px;
+  padding: 28px 34px; color: #fff;
+}
+.lobby-box h2 { font-size: 34px; margin-bottom: 8px; }
+.lobby-code { color: #ffd54f; font-weight: 900; font-size: 26px; letter-spacing: 8px; margin-bottom: 16px; }
+#lobbyList { display: flex; flex-direction: column; gap: 6px; margin-bottom: 18px; }
+.lobby-row {
+  display: flex; align-items: center; gap: 10px;
+  background: rgba(255,255,255,.06); border-radius: 10px;
+  padding: 8px 14px; font-weight: 600; font-size: 16px;
+}
+.lobby-row .dot { width: 12px; height: 12px; border-radius: 50%; flex: 0 0 auto; }
+.lobby-row .lname { flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lobby-row .lwins { color: #ffd54f; font-size: 14px; }
+.lobby-row .lready { font-weight: 800; color: #6f81a5; }
+.lobby-row.ready .lready { color: #8bea5a; }
+#btnReady.is-ready { background: linear-gradient(180deg, #43d94f, #2da838); box-shadow: 0 4px 0 #1d7526; }
+.lobby-status { min-height: 24px; margin-top: 14px; color: #9fb1d6; font-size: 15px; font-weight: 600; }
+.lobby-hint { margin-top: 10px; color: #6f81a5; font-size: 13px; }
+
 #roomBadge {
   position: absolute; top: 14px; left: 14px;
   background: rgba(10, 16, 32, .72); border-radius: 10px;
