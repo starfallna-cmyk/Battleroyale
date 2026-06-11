@@ -10,11 +10,16 @@ export class Avatar {
     this.walkT = 0;
     this.swingT = 0;
 
-    const team  = new THREE.MeshStandardMaterial({ color, roughness: 0.6 });
-    const pants = new THREE.MeshStandardMaterial({ color: 0x2e3440, roughness: 0.75 });
-    const dark  = new THREE.MeshStandardMaterial({ color: 0x1d2128, roughness: 0.6 });
-    const skin  = new THREE.MeshStandardMaterial({ color: 0xd9a886, roughness: 0.65 });
-    const hair  = new THREE.MeshStandardMaterial({ color: 0x3a2c20, roughness: 0.9 });
+    const c = new THREE.Color(color);
+    const team     = new THREE.MeshStandardMaterial({ color, roughness: 0.6 });
+    const teamDark = new THREE.MeshStandardMaterial({ color: c.clone().multiplyScalar(0.55), roughness: 0.7 });
+    const pants    = new THREE.MeshStandardMaterial({ color: 0x2e3440, roughness: 0.75 });
+    const dark     = new THREE.MeshStandardMaterial({ color: 0x1d2128, roughness: 0.6 });
+    const skin     = new THREE.MeshStandardMaterial({ color: 0xd9a886, roughness: 0.65 });
+    const hair     = new THREE.MeshStandardMaterial({ color: 0x3a2c20, roughness: 0.9 });
+    const white    = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.4 });
+    const sole     = new THREE.MeshStandardMaterial({ color: 0x4a4f58, roughness: 0.8 });
+    const metal    = new THREE.MeshStandardMaterial({ color: 0x9aa3b0, roughness: 0.35, metalness: 0.6 });
 
     const add = (parent, geo, mat, x, y, z) => {
       const m = new THREE.Mesh(geo, mat);
@@ -23,45 +28,72 @@ export class Avatar {
       parent.add(m);
       return m;
     };
-    const capsule = (r, len) => new THREE.CapsuleGeometry(r, len, 4, 10);
+    const capsule = (r, len) => new THREE.CapsuleGeometry(r, len, 6, 14);
 
-    // ----- legs: hip joint -> thigh -> knee joint -> shin + shoe -----
+    // ----- legs: hip joint -> thigh -> knee joint -> shin, knee pad, boot -----
     this.hipL = new THREE.Group(); this.hipL.position.set(-0.12, 0.96, 0);
     this.hipR = new THREE.Group(); this.hipR.position.set(0.12, 0.96, 0);
     this.kneeL = new THREE.Group(); this.kneeR = new THREE.Group();
     for (const [hip, knee] of [[this.hipL, this.kneeL], [this.hipR, this.kneeR]]) {
       add(hip, capsule(0.105, 0.28), pants, 0, -0.24, 0);
+      add(hip, new THREE.BoxGeometry(0.06, 0.3, 0.215), teamDark, -0.06 * Math.sign(hip.position.x), -0.22, 0); // side stripe
       knee.position.set(0, -0.48, 0);
+      add(knee, new THREE.SphereGeometry(0.08, 10, 8), dark, 0, -0.02, -0.05); // knee pad
       add(knee, capsule(0.085, 0.28), pants, 0, -0.22, 0);
-      add(knee, new THREE.BoxGeometry(0.18, 0.11, 0.32), dark, 0, -0.42, -0.05);
+      const boot = add(knee, new THREE.BoxGeometry(0.18, 0.13, 0.32), dark, 0, -0.41, -0.05);
+      add(knee, new THREE.BoxGeometry(0.19, 0.05, 0.34), sole, 0, -0.5, -0.05);
+      boot.castShadow = true;
       hip.add(knee);
       this.group.add(hip);
     }
 
-    // ----- torso: tapered jacket + pelvis + shoulders -----
-    const torsoGeo = new THREE.CylinderGeometry(0.24, 0.19, 0.56, 14);
+    // ----- torso: jacket, collar, zipper, chest rig, belt, backpack -----
     this.torso = new THREE.Group();
     this.torso.position.y = 0.98;
-    add(this.torso, torsoGeo, team, 0, 0.32, 0);
-    add(this.torso, new THREE.CylinderGeometry(0.17, 0.15, 0.16, 12), pants, 0, 0.02, 0); // pelvis
-    add(this.torso, new THREE.SphereGeometry(0.085, 10, 8), team, -0.235, 0.55, 0); // shoulders
-    add(this.torso, new THREE.SphereGeometry(0.085, 10, 8), team, 0.235, 0.55, 0);
-    add(this.torso, new THREE.BoxGeometry(0.26, 0.3, 0.06), dark, 0, 0.34, -0.19); // chest rig
+    add(this.torso, new THREE.CylinderGeometry(0.24, 0.19, 0.56, 16), team, 0, 0.32, 0);
+    add(this.torso, new THREE.CylinderGeometry(0.105, 0.125, 0.07, 12), teamDark, 0, 0.585, 0); // collar
+    add(this.torso, new THREE.BoxGeometry(0.025, 0.46, 0.012), dark, 0, 0.33, -0.218);          // zipper
+    add(this.torso, new THREE.CylinderGeometry(0.17, 0.15, 0.16, 12), pants, 0, 0.02, 0);       // pelvis
+    add(this.torso, new THREE.SphereGeometry(0.09, 12, 10), team, -0.235, 0.55, 0);             // shoulders
+    add(this.torso, new THREE.SphereGeometry(0.09, 12, 10), team, 0.235, 0.55, 0);
+    const strap = add(this.torso, new THREE.BoxGeometry(0.06, 0.5, 0.015), dark, -0.07, 0.36, -0.215);
+    strap.rotation.z = 0.35; // sling strap
+    add(this.torso, new THREE.BoxGeometry(0.1, 0.11, 0.05), dark, -0.1, 0.2, -0.215);  // pouches
+    add(this.torso, new THREE.BoxGeometry(0.1, 0.09, 0.05), dark, 0.1, 0.21, -0.21);
+    add(this.torso, new THREE.CylinderGeometry(0.178, 0.158, 0.07, 14), dark, 0, 0.045, 0); // belt
+    add(this.torso, new THREE.BoxGeometry(0.07, 0.05, 0.02), metal, 0, 0.045, -0.175);      // buckle
+    add(this.torso, new THREE.BoxGeometry(0.3, 0.36, 0.15), teamDark, 0, 0.32, 0.245);      // backpack
+    add(this.torso, new THREE.BoxGeometry(0.31, 0.08, 0.16), dark, 0, 0.45, 0.245);         // pack flap
     this.group.add(this.torso);
 
-    // ----- head: neck, skin face, hair cap, shades (name 'head' = bonus dmg) -----
+    // ----- head: face with eyes/brows/mouth, hair, headphones -----
     this.head = new THREE.Group();
     this.head.position.y = 1.6;
     add(this.head, new THREE.CylinderGeometry(0.06, 0.07, 0.1, 10), skin, 0, 0.0, 0);
-    const skull = add(this.head, new THREE.SphereGeometry(0.155, 16, 12), skin, 0, 0.16, 0);
+    const skull = add(this.head, new THREE.SphereGeometry(0.155, 18, 14), skin, 0, 0.16, 0);
+    skull.scale.set(1, 1.08, 1.02);
     skull.name = 'head';
-    const cap = add(this.head, new THREE.SphereGeometry(0.16, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), hair, 0, 0.17, 0.012);
-    cap.name = 'head';
-    const shades = add(this.head, new THREE.BoxGeometry(0.22, 0.055, 0.06), dark, 0, 0.18, -0.13);
-    shades.name = 'head';
+    const hairCap = add(this.head, new THREE.SphereGeometry(0.163, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.58), hair, 0, 0.165, 0.012);
+    hairCap.rotation.x = -0.18; // fringe forward
+    hairCap.name = 'head';
+    const hairBack = add(this.head, new THREE.SphereGeometry(0.15, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), hair, 0, 0.13, 0.045);
+    hairBack.rotation.x = Math.PI * 0.55;
+    hairBack.name = 'head';
+    for (const s of [-1, 1]) {
+      add(this.head, new THREE.SphereGeometry(0.031, 8, 8), white, s * 0.062, 0.175, -0.132);  // eye
+      add(this.head, new THREE.SphereGeometry(0.0145, 6, 6), dark, s * 0.062, 0.175, -0.156);  // pupil
+      const brow = add(this.head, new THREE.BoxGeometry(0.052, 0.013, 0.012), hair, s * 0.062, 0.222, -0.143);
+      brow.rotation.z = s * -0.12;
+      const cup = add(this.head, new THREE.CylinderGeometry(0.047, 0.047, 0.035, 10), teamDark, s * 0.158, 0.165, 0); // headphone cup
+      cup.rotation.z = Math.PI / 2;
+    }
+    add(this.head, new THREE.TorusGeometry(0.158, 0.018, 6, 14, Math.PI), teamDark, 0, 0.17, 0); // headphone band (XY arc over the top)
+    add(this.head, new THREE.BoxGeometry(0.055, 0.014, 0.012),
+      new THREE.MeshStandardMaterial({ color: 0xb07a5e, roughness: 0.7 }), 0, 0.09, -0.148); // mouth
+    add(this.head, new THREE.BoxGeometry(0.03, 0.045, 0.03), skin, 0, 0.145, -0.155); // nose
     this.group.add(this.head);
 
-    // ----- arms: shoulder joint -> upper arm -> elbow joint -> forearm + hand -----
+    // ----- arms: shoulder joint -> upper arm -> elbow joint -> forearm, glove -----
     this.shL = new THREE.Group(); this.shL.position.set(-0.24, 1.5, 0);
     this.shR = new THREE.Group(); this.shR.position.set(0.24, 1.5, 0);
     this.elbL = new THREE.Group(); this.elbR = new THREE.Group();
@@ -69,7 +101,8 @@ export class Avatar {
       add(sh, capsule(0.075, 0.18), team, 0, -0.15, 0);
       elb.position.set(0, -0.29, 0);
       add(elb, capsule(0.063, 0.18), skin, 0, -0.14, 0);
-      add(elb, new THREE.SphereGeometry(0.07, 8, 8), skin, 0, -0.28, 0); // hand
+      add(elb, new THREE.CylinderGeometry(0.066, 0.06, 0.05, 10), dark, 0, -0.235, 0); // wrist band
+      add(elb, new THREE.SphereGeometry(0.07, 10, 8), dark, 0, -0.29, 0);              // glove
       sh.add(elb);
       this.group.add(sh);
     }

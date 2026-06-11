@@ -48,34 +48,89 @@ function makeHpBar() {
   return { sprite, draw };
 }
 
+function busBannerTexture() {
+  const cv = document.createElement('canvas');
+  cv.width = 512; cv.height = 80;
+  const c = cv.getContext('2d');
+  c.fillStyle = '#f4f1ea';
+  c.fillRect(0, 0, 512, 80);
+  c.fillStyle = '#d8434e';
+  c.fillRect(0, 0, 512, 10);
+  c.fillRect(0, 70, 512, 10);
+  c.font = '900 44px Segoe UI, Arial';
+  c.textAlign = 'center';
+  c.fillStyle = '#1d3f8f';
+  c.fillText('⚔ BATTLE BUS ⚔', 256, 56);
+  return new THREE.CanvasTexture(cv);
+}
+
+function balloonTexture() {
+  const cv = document.createElement('canvas');
+  cv.width = 160; cv.height = 32;
+  const c = cv.getContext('2d');
+  for (let i = 0; i < 10; i++) {
+    c.fillStyle = i % 2 ? '#e8e6e1' : '#d8434e';
+    c.fillRect(i * 16, 0, 16, 32);
+  }
+  return new THREE.CanvasTexture(cv);
+}
+
+// Detailed battle bus: striped balloon, glowing windows, banner, burner flame.
+// Local -Z is the direction of travel. Returns { group, flame }.
 function makeBus() {
   const g = new THREE.Group();
-  const body = new THREE.Mesh(
-    new THREE.BoxGeometry(6.5, 2.4, 2.8),
-    new THREE.MeshStandardMaterial({ color: 0x3d6cf5, roughness: 0.5 }));
-  body.castShadow = true;
-  const stripe = new THREE.Mesh(
-    new THREE.BoxGeometry(6.6, 0.5, 2.9),
-    new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 }));
-  stripe.position.y = 0.45;
-  const balloon = new THREE.Mesh(
-    new THREE.SphereGeometry(2.6, 16, 12),
-    new THREE.MeshStandardMaterial({ color: 0xff5252, roughness: 0.6 }));
-  balloon.scale.set(1.25, 0.95, 1);
-  balloon.position.y = 4.6;
-  balloon.castShadow = true;
-  g.add(body, stripe, balloon);
-  for (const [x, z] of [[-1.8, -1], [1.8, -1], [-1.8, 1], [1.8, 1]]) {
-    const rope = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.03, 0.03, 2.6, 4),
-      new THREE.MeshStandardMaterial({ color: 0x222630 }));
-    rope.position.set(x, 2.6, z);
-    rope.rotation.z = -x * 0.18;
-    rope.rotation.x = z * 0.18;
-    g.add(rope);
+  const blue  = new THREE.MeshStandardMaterial({ color: 0x3d6cf5, roughness: 0.45, metalness: 0.15 });
+  const dark  = new THREE.MeshStandardMaterial({ color: 0x222630, roughness: 0.7 });
+  const glow  = new THREE.MeshStandardMaterial({ color: 0xbfe8ff, emissive: 0x9fd4f5, emissiveIntensity: 0.7 });
+  const glass = new THREE.MeshStandardMaterial({ color: 0xaed4ea, roughness: 0.15, metalness: 0.3 });
+
+  const part = (geo, mat, x, y, z) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z);
+    m.castShadow = true;
+    g.add(m);
+    return m;
+  };
+
+  part(new THREE.BoxGeometry(2.8, 2.2, 6.5), blue, 0, 0.1, 0);                      // body
+  part(new THREE.BoxGeometry(2.9, 0.5, 6.6), dark, 0, -1.0, 0);                     // skirt
+  part(new THREE.BoxGeometry(2.5, 0.25, 5.9), new THREE.MeshStandardMaterial({ color: 0xe8e6e1, roughness: 0.5 }), 0, 1.3, 0); // roof
+  part(new THREE.BoxGeometry(2.2, 0.85, 0.08), glass, 0, 0.45, -3.27);              // windshield
+  part(new THREE.BoxGeometry(2.0, 0.5, 0.06), dark, 0, -0.5, -3.28);                // grille
+  part(new THREE.BoxGeometry(0.5, 0.22, 0.08), glow, -0.95, -0.15, -3.28);          // headlights
+  part(new THREE.BoxGeometry(0.5, 0.22, 0.08), glow, 0.95, -0.15, -3.28);
+  part(new THREE.BoxGeometry(0.08, 0.6, 5.0), glow, -1.43, 0.62, 0.3);              // window strips
+  part(new THREE.BoxGeometry(0.08, 0.6, 5.0), glow, 1.43, 0.62, 0.3);
+  part(new THREE.BoxGeometry(0.08, 1.5, 0.95), dark, 1.44, -0.3, -2.3);             // door
+
+  const bannerTex = busBannerTexture();
+  for (const s of [-1, 1]) {
+    const banner = new THREE.Mesh(new THREE.PlaneGeometry(5.6, 0.85),
+      new THREE.MeshBasicMaterial({ map: bannerTex }));
+    banner.position.set(s * 1.46, -0.35, 0.2);
+    banner.rotation.y = s * Math.PI / 2;
+    g.add(banner);
   }
+  for (const [x, z] of [[-1.05, -2.3], [1.05, -2.3], [-1.05, 2.3], [1.05, 2.3]]) {
+    const wheel = part(new THREE.CylinderGeometry(0.46, 0.46, 0.3, 12), dark, x, -1.35, z);
+    wheel.rotation.z = Math.PI / 2;
+  }
+
+  // balloon rig
+  const balloon = part(new THREE.SphereGeometry(2.7, 20, 14),
+    new THREE.MeshStandardMaterial({ map: balloonTexture(), roughness: 0.65 }), 0, 5.0, 0);
+  balloon.scale.set(1, 0.94, 1.18);
+  part(new THREE.BoxGeometry(0.55, 0.45, 0.55), dark, 0, 2.85, 0);                  // burner box
+  const flame = part(new THREE.ConeGeometry(0.24, 0.75, 8),
+    new THREE.MeshStandardMaterial({ color: 0xffc14d, emissive: 0xff8a00, emissiveIntensity: 1.6 }), 0, 3.5, 0);
+  for (const [x, z] of [[-1.1, -1.6], [1.1, -1.6], [-1.1, 1.6], [1.1, 1.6]]) {
+    const rope = part(new THREE.CylinderGeometry(0.03, 0.03, 1.8, 4), dark, x * 0.85, 2.3, z * 0.85);
+    rope.rotation.z = -x * 0.3;
+    rope.rotation.x = z * 0.28;
+  }
+
   g.traverse(o => { o.userData.noHit = true; });
-  return g;
+  return { group: g, flame };
 }
 
 export class Game {
@@ -130,13 +185,16 @@ export class Game {
     this.scene.add(this.meAvatar.group);
 
     // --- battle bus ---
-    this.bus = makeBus();
+    const bus = makeBus();
+    this.bus = bus.group;
+    this.busFlame = bus.flame;
     this.scene.add(this.bus);
     this.phase = 'bus'; // 'bus' -> 'sky' -> 'normal'
     this.busT = 0;
+    this.busBob = 0;
     const busDir = BUS_TO.clone().sub(BUS_FROM).normalize();
     this.busDir = busDir;
-    this.bus.rotation.y = Math.atan2(-busDir.x, -busDir.z) + Math.PI;
+    this.bus.rotation.y = Math.atan2(-busDir.x, -busDir.z);
     this.yaw = Math.atan2(-busDir.x, -busDir.z);
 
     // --- other players & scores ---
@@ -383,7 +441,8 @@ export class Game {
   _updatePrompt() {
     const p = this.ui.prompt;
     if (this.phase === 'bus') {
-      p.textContent = '🚌 Press SPACE to drop!';
+      const left = Math.max(0, Math.ceil((1 - this.busT) * BUS_TIME));
+      p.textContent = `🚌 SPACE to drop — auto in ${left}s`;
       p.classList.remove('hidden');
     } else if (this.phase === 'sky') {
       p.textContent = '🪂 Hold SHIFT to dive';
@@ -394,10 +453,21 @@ export class Game {
   }
 
   // ===================== battle bus & gliding =====================
+  _busAnim(dt) {
+    if (!this.bus.visible) return;
+    this.busBob += dt;
+    this.bus.position.y = BUS_FROM.y + Math.sin(this.busBob * 1.2) * 0.6;
+    this.bus.rotation.z = Math.sin(this.busBob * 0.8) * 0.025;
+    const f = 1 + 0.3 * Math.sin(this.busBob * 24) + 0.15 * Math.sin(this.busBob * 7.3);
+    this.busFlame.scale.set(1, Math.max(0.4, f), 1);
+  }
+
   _busTick(dt) {
+    sfx.busStart();
     this.busT += dt / BUS_TIME;
     const t = Math.min(1, this.busT);
     this.bus.position.lerpVectors(BUS_FROM, BUS_TO, t);
+    this._busAnim(dt);
     this.pos.copy(this.bus.position);
     this.pos.y -= 1.0;
     if ((this.keys['Space'] && this._locked()) || t >= 1) this._dropFromBus();
@@ -405,6 +475,7 @@ export class Game {
 
   _dropFromBus() {
     this.phase = 'sky';
+    sfx.busStop();
     this.bus.visible = this.busT < 1.2; // keep flying visually a moment
     this.vel.set(this.busDir.x * 4, -2, this.busDir.z * 4);
     // clamp drop point into the arena
@@ -420,6 +491,7 @@ export class Game {
     if (this.bus.visible && this.phase !== 'bus') {
       this.busT += dt / BUS_TIME;
       this.bus.position.lerpVectors(BUS_FROM, BUS_TO, Math.min(1.35, this.busT));
+      this._busAnim(dt);
       if (this.busT >= 1.35) this.bus.visible = false;
     }
 
@@ -481,8 +553,9 @@ export class Game {
 
     if (this.grounded && this.phase === 'sky') this.phase = 'normal';
 
-    if (this.grounded && this.pos.y < 0.5) {
+    if (this.grounded) {
       for (const p of this.pads) {
+        if (Math.abs(this.pos.y - (p.y || 0)) > 0.5) continue;
         const dx = this.pos.x - p.x, dz = this.pos.z - p.z;
         if (dx * dx + dz * dz < 1.7 * 1.7) {
           this.vel.y = PAD_V;
@@ -981,7 +1054,7 @@ export class Game {
         m: +Math.hypot(this.vel.x, this.vel.z).toFixed(1),
         g: this.grounded ? 1 : 0,
         i: this._item(),
-        gl: this.gliding ? 1 : 0,
+        gl: (this.gliding || this.phase === 'bus') ? 1 : 0,
       });
     }
   }

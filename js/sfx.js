@@ -44,8 +44,35 @@ function tone(freq, vol, dur, type = 'square') {
   o.stop(c.currentTime + dur);
 }
 
+let busNodes = null;
+
 export const sfx = {
   unlock() { ac(); }, // call on first user gesture
+  busStart() {
+    if (busNodes) return;
+    try {
+      const c = ac();
+      const o1 = c.createOscillator(); o1.type = 'sawtooth'; o1.frequency.value = 52;
+      const o2 = c.createOscillator(); o2.type = 'triangle'; o2.frequency.value = 104;
+      const g = c.createGain(); g.gain.value = 0.035;
+      const lfo = c.createOscillator(); lfo.frequency.value = 8.5;
+      const lg = c.createGain(); lg.gain.value = 0.012;
+      lfo.connect(lg); lg.connect(g.gain);
+      o1.connect(g); o2.connect(g); g.connect(c.destination);
+      o1.start(); o2.start(); lfo.start();
+      busNodes = { o1, o2, lfo, g, c };
+    } catch (e) { /* audio not available yet */ }
+  },
+  busStop() {
+    if (!busNodes) return;
+    const { o1, o2, lfo, g, c } = busNodes;
+    busNodes = null;
+    try {
+      g.gain.setValueAtTime(g.gain.value, c.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.5);
+      setTimeout(() => { o1.stop(); o2.stop(); lfo.stop(); }, 550);
+    } catch (e) { /* already torn down */ }
+  },
   swing()    { burst(0.12, 0.12, 600); },
   thunk()    { tone(140, 0.22, 0.1, 'triangle'); burst(0.15, 0.08, 500); },
   pad()      { tone(330, 0.18, 0.12); setTimeout(() => tone(520, 0.16, 0.18), 60); },

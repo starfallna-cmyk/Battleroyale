@@ -33,7 +33,7 @@ Every match starts on the **battle bus** — press `Space` to drop, glide down (
 | `R` | Reload |
 | `Esc` | Release mouse |
 
-Builds snap to a grid, have HP, and can be shot down. Hold left click in build mode to turbo-build; look up while building to place a level higher. Press `F` on a wall to cycle a doorway or window into it, or on a ramp to flip its direction. Headshots deal bonus damage, rifles lose damage at long range, and the sniper only one-shots on a headshot.
+Builds snap to a grid, have HP, and can be shot down. Hold left click in build mode to turbo-build; look up while building to place a level higher. Press `F` on a wall to toggle a window into it, or on a ramp to flip its direction. Headshots deal bonus damage, rifles lose damage at long range, and the sniper only one-shots on a headshot.
 
 ## 🛠 Run locally
 

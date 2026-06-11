@@ -12,12 +12,10 @@ const T = 0.3; // panel thickness
 const WALL_EDITS = [
   // 0: full
   [[4, 4, 0, 0]],
-  // 1: doorway (1.4 wide, 2.6 tall, bottom center)
-  [[1.3, 4, -1.35, 0], [1.3, 4, 1.35, 0], [1.4, 1.4, 0, 1.3]],
-  // 2: window (1.6 x 1.4, mid height)
-  [[1.2, 4, -1.4, 0], [1.2, 4, 1.4, 0], [1.6, 1.5, 0, -1.25], [1.6, 1.1, 0, 1.45]],
+  // 1: window (1.7 x 1.5, mid height)
+  [[1.15, 4, -1.425, 0], [1.15, 4, 1.425, 0], [1.7, 1.45, 0, -1.275], [1.7, 1.05, 0, 1.475]],
 ];
-export const EDIT_COUNT = { wall: 3, floor: 1, ramp: 2 }; // ramp edit = flip
+export const EDIT_COUNT = { wall: 2, floor: 1, ramp: 2 }; // wall: window toggle, ramp: flip
 
 const GHOST_GEO = {
   wall:  new THREE.BoxGeometry(CELL, CELL, T),
@@ -189,10 +187,14 @@ export class BuildSystem {
       rec.ramp.dir.set(-Math.sin(ry), 0, -Math.cos(ry));
     }
 
-    // collision boxes from world transforms (ramps use the surface fn instead)
+    // collision boxes from world transforms (ramps use the surface fn instead);
+    // measure at scale 1 so a mid-pop-in edit doesn't bake the spawn scale in
     if (rec.type !== 'ramp') {
+      const s = group.scale.x;
+      group.scale.setScalar(1);
       group.updateMatrixWorld(true);
       for (const ch of group.children) rec.boxes.push(new THREE.Box3().setFromObject(ch));
+      group.scale.setScalar(s);
     }
   }
 
