@@ -8,18 +8,37 @@ export const MAX_PLAYERS = 6;
 // bump when messages change shape — mismatched clients get a clear error
 export const PROTO = 7;
 
-// extra STUN servers improve NAT traversal odds (PeerJS's defaults plus these)
-const PEER_OPTS = {
-  config: {
-    iceServers: [
-      { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
-      { urls: 'stun:stun.cloudflare.com:3478' },
-      { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478'],
-        username: 'peerjs', credential: 'peerjsp' },
-    ],
-    sdpSemantics: 'unified-plan',
-  },
-};
+// TURN relay (metered.ca) makes connections work across any router/firewall.
+// Credentials are fetched fresh per session; on failure we fall back to
+// STUN-only, which still connects most home-network pairs directly.
+const TURN_API = 'https://bettleroyale6.metered.live/api/v1/turn/credentials?apiKey=fa976f310132950e91a193972b7eef3be96e';
+
+const STUN_SERVERS = [
+  { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+  { urls: 'stun:stun.cloudflare.com:3478' },
+];
+
+let icePromise = null;
+function iceServers() {
+  if (!icePromise) {
+    icePromise = (async () => {
+      try {
+        const ctl = new AbortController();
+        const timer = setTimeout(() => ctl.abort(), 5000);
+        const res = await fetch(TURN_API, { signal: ctl.signal });
+        clearTimeout(timer);
+        const servers = await res.json();
+        if (Array.isArray(servers) && servers.length) return [...STUN_SERVERS, ...servers];
+      } catch (e) { /* relay unreachable — STUN-only fallback */ }
+      return STUN_SERVERS;
+    })();
+  }
+  return icePromise;
+}
+
+function peerOpts(servers) {
+  return { config: { iceServers: servers, sdpSemantics: 'unified-plan' } };
+}
 
 const CONNECT_TIMEOUT = 14000;
 const NAT_HELP = 'Could not reach the host — a router/firewall on one side is blocking '
@@ -44,10 +63,14 @@ export class Net {
     return this.isHost ? this.conns.size + 1 : -1; // guests don't track
   }
 
-  host(code, { onWaiting, onError }) {
+  host(code, callbacks) {
+    iceServers().then((servers) => this._host(code, callbacks, servers));
+  }
+
+  _host(code, { onWaiting, onError }, servers) {
     this.isHost = true;
     this.myId = 0;
-    this.peer = new Peer(PREFIX + code, PEER_OPTS);
+    this.peer = new Peer(PREFIX + code, peerOpts(servers));
     this.peer.on('open', () => onWaiting(code));
     this.peer.on('connection', (conn) => {
       if (this.conns.size >= MAX_PLAYERS - 1) {
@@ -83,11 +106,15 @@ export class Net {
     this.peer.on('disconnected', () => { if (!this._closed) this.peer.reconnect(); });
   }
 
-  join(code, { onConnected, onError }) {
+  join(code, callbacks) {
+    iceServers().then((servers) => this._join(code, callbacks, servers));
+  }
+
+  _join(code, { onConnected, onError }, servers) {
     this.isHost = false;
     let settled = false;
     const fail = (msg) => { if (!settled) { settled = true; onError(msg); } };
-    this.peer = new Peer(PEER_OPTS);
+    this.peer = new Peer(peerOpts(servers));
     this.peer.on('open', () => {
       const conn = this.peer.connect(PREFIX + code, { reliable: true });
       this.hostConn = conn;
