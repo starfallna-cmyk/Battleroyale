@@ -17,64 +17,133 @@ function canvasTex(w, h, draw) {
   return tex;
 }
 
-// grayscale patterns tinted by each mesh's color
+// fine grain speckle — the difference between "toy" and "real" surfaces
+function grain(c, w, h, n, darkAlpha = 0.1, lightAlpha = 0.07) {
+  for (let i = 0; i < n; i++) {
+    c.fillStyle = `rgba(0,0,0,${Math.random() * darkAlpha})`;
+    c.fillRect(Math.random() * w, Math.random() * h, 1 + Math.random() * 2, 1 + Math.random() * 2);
+    c.fillStyle = `rgba(255,255,255,${Math.random() * lightAlpha})`;
+    c.fillRect(Math.random() * w, Math.random() * h, 1 + Math.random() * 2, 1 + Math.random() * 2);
+  }
+}
+function baseGrime(c, w, h) { // darkened wall base, like dirt splash-back
+  const g = c.createLinearGradient(0, h * 0.72, 0, h);
+  g.addColorStop(0, 'rgba(60,45,30,0)');
+  g.addColorStop(1, 'rgba(60,45,30,0.38)');
+  c.fillStyle = g;
+  c.fillRect(0, h * 0.7, w, h * 0.3);
+}
+
+// grayscale-ish patterns tinted by each mesh's color
 const T = {
-  siding: canvasTex(64, 64, (c) => {
-    c.fillStyle = '#cdcdcd'; c.fillRect(0, 0, 64, 64);
-    for (let y = 0; y < 64; y += 16) {
-      c.fillStyle = '#9e9e9e'; c.fillRect(0, y + 13, 64, 3);
-      c.fillStyle = '#e3e3e3'; c.fillRect(0, y, 64, 2);
+  // sandstone brick (deadshot-style walls) — per-brick tint + mortar + grain
+  brick: canvasTex(256, 256, (c, w, h) => {
+    c.fillStyle = '#9a8c74'; c.fillRect(0, 0, w, h);
+    const bh = 24, bw = 62;
+    for (let y = 0; y < h; y += bh) {
+      const off = (y / bh) % 2 ? bw / 2 : 0;
+      for (let x = -bw; x < w + bw; x += bw) {
+        const v = 200 + Math.floor(Math.random() * 42);
+        c.fillStyle = `rgb(${v},${v - 12},${v - 38})`;
+        c.fillRect(x + off + 2, y + 2, bw - 4, bh - 4);
+      }
     }
+    grain(c, w, h, 2600, 0.12, 0.08);
+    baseGrime(c, w, h);
   }),
-  metal: canvasTex(64, 64, (c) => {
-    c.fillStyle = '#c8c8c8'; c.fillRect(0, 0, 64, 64);
-    for (let x = 0; x < 64; x += 16) {
-      c.fillStyle = '#a2a2a2'; c.fillRect(x + 10, 0, 6, 64);
-      c.fillStyle = '#e0e0e0'; c.fillRect(x, 0, 2, 64);
+  // painted wood planks with grain streaks and nails
+  wood: canvasTex(256, 256, (c, w, h) => {
+    const ph = 25;
+    for (let y = 0; y < h; y += ph) {
+      const v = 195 + Math.floor(Math.random() * 45);
+      c.fillStyle = `rgb(${v},${v - 6},${v - 14})`;
+      c.fillRect(0, y, w, ph - 3);
+      c.fillStyle = 'rgba(0,0,0,0.35)';
+      c.fillRect(0, y + ph - 3, w, 3);
+      for (let i = 0; i < 7; i++) { // grain streaks
+        c.fillStyle = `rgba(70,50,30,${0.08 + Math.random() * 0.1})`;
+        c.fillRect(Math.random() * w, y + 3 + Math.random() * (ph - 8), 18 + Math.random() * 46, 1.6);
+      }
+      c.fillStyle = 'rgba(40,30,20,0.5)'; // nails
+      c.fillRect(6, y + ph / 2 - 1, 2.5, 2.5);
+      c.fillRect(w - 9, y + ph / 2 - 1, 2.5, 2.5);
     }
+    grain(c, w, h, 1600, 0.1, 0.05);
+    baseGrime(c, w, h);
   }),
-  planks: canvasTex(64, 64, (c) => {
-    c.fillStyle = '#c9c9c9'; c.fillRect(0, 0, 64, 64);
-    for (let x = 0; x < 64; x += 21) {
-      c.fillStyle = '#a8a8a8'; c.fillRect(x, 0, 3, 64);
+  // corrugated metal with rust flecks
+  metal: canvasTex(128, 128, (c, w, h) => {
+    c.fillStyle = '#b9b9b9'; c.fillRect(0, 0, w, h);
+    for (let x = 0; x < w; x += 16) {
+      c.fillStyle = '#8f8f8f'; c.fillRect(x + 10, 0, 6, h);
+      c.fillStyle = '#d9d9d9'; c.fillRect(x, 0, 2, h);
     }
-    for (let i = 0; i < 9; i++) {
-      c.fillStyle = 'rgba(120,120,120,0.35)';
-      c.fillRect((i * 23) % 60, (i * 17) % 60, 8, 2);
+    for (let i = 0; i < 26; i++) {
+      c.fillStyle = `rgba(140,80,40,${0.12 + Math.random() * 0.18})`;
+      c.fillRect(Math.random() * w, Math.random() * h, 2 + Math.random() * 5, 2 + Math.random() * 4);
     }
+    grain(c, w, h, 900, 0.1, 0.07);
+    baseGrime(c, w, h);
   }),
-  brick: canvasTex(64, 64, (c) => {
-    c.fillStyle = '#c4c4c4'; c.fillRect(0, 0, 64, 64);
-    c.fillStyle = '#9a9a9a';
-    for (let y = 0; y < 64; y += 16) {
-      c.fillRect(0, y + 13, 64, 3);
-      const off = (y / 16) % 2 ? 16 : 0;
-      for (let x = off; x < 64; x += 32) c.fillRect(x, y, 3, 13);
+  // weathered raw planks (crates)
+  planks: canvasTex(128, 128, (c, w, h) => {
+    c.fillStyle = '#c2c2c2'; c.fillRect(0, 0, w, h);
+    for (let x = 0; x < w; x += 42) {
+      c.fillStyle = 'rgba(70,55,35,0.5)'; c.fillRect(x, 0, 3, h);
     }
+    for (let i = 0; i < 30; i++) {
+      c.fillStyle = `rgba(90,70,45,${0.1 + Math.random() * 0.16})`;
+      c.fillRect(Math.random() * w, Math.random() * h, 10 + Math.random() * 26, 1.6);
+    }
+    grain(c, w, h, 1100, 0.12, 0.06);
+  }),
+  // stained concrete
+  concrete: canvasTex(256, 256, (c, w, h) => {
+    c.fillStyle = '#b4b4b0'; c.fillRect(0, 0, w, h);
+    for (let i = 0; i < 22; i++) { // blotchy stains
+      const grad = c.createRadialGradient(0, 0, 1, 0, 0, 18 + Math.random() * 36);
+      grad.addColorStop(0, `rgba(80,78,70,${0.1 + Math.random() * 0.12})`);
+      grad.addColorStop(1, 'rgba(80,78,70,0)');
+      c.save();
+      c.translate(Math.random() * w, Math.random() * h);
+      c.fillStyle = grad;
+      c.fillRect(-60, -60, 120, 120);
+      c.restore();
+    }
+    grain(c, w, h, 2400, 0.1, 0.06);
+    baseGrime(c, w, h);
   }),
 };
 
 function groundTexture() {
+  // mottled packed dirt — large soft blotches + heavy fine grain
   const cv = document.createElement('canvas');
-  cv.width = cv.height = 128;
+  cv.width = cv.height = 256;
   const c = cv.getContext('2d');
-  c.fillStyle = '#75906f';
-  c.fillRect(0, 0, 128, 128);
-  c.strokeStyle = 'rgba(60,75,62,0.35)';
-  c.lineWidth = 2;
-  c.strokeRect(1, 1, 126, 126);
-  for (let i = 0; i < 26; i++) {
-    c.fillStyle = `rgba(${90 + Math.random() * 40},${110 + Math.random() * 30},${85 + Math.random() * 30},0.28)`;
-    c.fillRect(Math.random() * 122, Math.random() * 122, 4 + Math.random() * 8, 4 + Math.random() * 8);
-  }
-  // tiny grass-blade ticks
+  c.fillStyle = '#a98a5f';
+  c.fillRect(0, 0, 256, 256);
   for (let i = 0; i < 60; i++) {
-    c.fillStyle = `rgba(${60 + Math.random() * 30},${95 + Math.random() * 35},${60 + Math.random() * 25},0.5)`;
-    c.fillRect(Math.random() * 126, Math.random() * 124, 1.5, 3.5);
+    const grad = c.createRadialGradient(0, 0, 1, 0, 0, 10 + Math.random() * 30);
+    const dark = Math.random() > 0.45;
+    grad.addColorStop(0, dark
+      ? `rgba(120,90,55,${0.12 + Math.random() * 0.16})`
+      : `rgba(220,190,140,${0.1 + Math.random() * 0.14})`);
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    c.save();
+    c.translate(Math.random() * 256, Math.random() * 256);
+    c.fillStyle = grad;
+    c.fillRect(-45, -45, 90, 90);
+    c.restore();
+  }
+  grain(c, 256, 256, 3200, 0.13, 0.08);
+  // sparse pebbles and dry twigs
+  for (let i = 0; i < 26; i++) {
+    c.fillStyle = `rgba(${100 + Math.random() * 50},${85 + Math.random() * 40},${60 + Math.random() * 25},0.65)`;
+    c.fillRect(Math.random() * 252, Math.random() * 252, 2 + Math.random() * 3, 2 + Math.random() * 2);
   }
   const tex = new THREE.CanvasTexture(cv);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set((ARENA * 2) / CELL, (ARENA * 2) / CELL);
+  tex.repeat.set((ARENA * 2) / 8, (ARENA * 2) / 8);
   tex.anisotropy = 4;
   return tex;
 }
@@ -84,10 +153,10 @@ export function buildMap(scene) {
   const solids = [];
   const staticMeshes = [];
 
-  // env map supplies ambient bounce, so the hemisphere stays subtle
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x55657a, 0.45));
-  const sun = new THREE.DirectionalLight(0xfff4e0, 1.5);
-  sun.position.set(60, 100, 40);
+  // warm late-afternoon light, env map supplies ambient bounce
+  scene.add(new THREE.HemisphereLight(0xffe2c4, 0x6b5a48, 0.42));
+  const sun = new THREE.DirectionalLight(0xffd9a8, 1.75);
+  sun.position.set(90, 70, 55);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   Object.assign(sun.shadow.camera, { left: -90, right: 90, top: 90, bottom: -90, far: 300 });
@@ -95,26 +164,28 @@ export function buildMap(scene) {
 
   const ground = new THREE.Mesh(
     new THREE.BoxGeometry(ARENA * 2, 1, ARENA * 2),
-    new THREE.MeshStandardMaterial({ map: groundTexture(), color: 0x91a091, roughness: 0.95 }));
+    new THREE.MeshStandardMaterial({ map: groundTexture(), color: 0x9a7e57, roughness: 0.96 }));
   ground.position.y = -0.5;
   ground.receiveShadow = true;
   scene.add(ground);
 
   const outer = new THREE.Mesh(
     new THREE.PlaneGeometry(2400, 2400),
-    new THREE.MeshStandardMaterial({ color: 0x5e7459, roughness: 1 }));
+    new THREE.MeshStandardMaterial({ color: 0x96794e, roughness: 1 }));
   outer.rotation.x = -Math.PI / 2;
   outer.position.y = -0.55;
   scene.add(outer);
 
   // ----- sky dome, sun, clouds, distant mountains -----
   const skyTex = canvasTex(16, 256, (c) => {
+    // sunset: deep blue overhead burning to orange at the horizon
     const grad = c.createLinearGradient(0, 0, 0, 256);
-    grad.addColorStop(0, '#3f78c9');
-    grad.addColorStop(0.5, '#7fb0e3');
-    grad.addColorStop(0.72, '#b8d6ee');
-    grad.addColorStop(0.82, '#dcebf5');
-    grad.addColorStop(1, '#e8f0f4');
+    grad.addColorStop(0, '#41608f');
+    grad.addColorStop(0.42, '#7d83a6');
+    grad.addColorStop(0.58, '#bd8e76');
+    grad.addColorStop(0.7, '#dfa069');
+    grad.addColorStop(0.8, '#edb377');
+    grad.addColorStop(1, '#f4cf95');
     c.fillStyle = grad;
     c.fillRect(0, 0, 16, 256);
   });
@@ -126,17 +197,17 @@ export function buildMap(scene) {
 
   const sunTex = canvasTex(128, 128, (c) => {
     const grad = c.createRadialGradient(64, 64, 4, 64, 64, 64);
-    grad.addColorStop(0, 'rgba(255,252,230,1)');
-    grad.addColorStop(0.25, 'rgba(255,244,190,0.9)');
-    grad.addColorStop(1, 'rgba(255,240,180,0)');
+    grad.addColorStop(0, 'rgba(255,246,220,1)');
+    grad.addColorStop(0.22, 'rgba(255,214,150,0.95)');
+    grad.addColorStop(1, 'rgba(255,170,90,0)');
     c.fillStyle = grad;
     c.fillRect(0, 0, 128, 128);
   });
   const sunSpr = new THREE.Sprite(new THREE.SpriteMaterial({
     map: sunTex, blending: THREE.AdditiveBlending, fog: false, depthWrite: false,
   }));
-  sunSpr.position.set(420, 660, 280);
-  sunSpr.scale.set(220, 220, 1);
+  sunSpr.position.set(620, 290, 380); // low warm sun
+  sunSpr.scale.set(300, 300, 1);
   scene.add(sunSpr);
 
   const cloudTex = canvasTex(128, 64, (c) => {
@@ -152,7 +223,7 @@ export function buildMap(scene) {
   for (let i = 0; i < 7; i++) {
     const a = i * 0.9 + 0.4;
     const cl = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: cloudTex, transparent: true, opacity: 0.85, fog: false, depthWrite: false,
+      map: cloudTex, transparent: true, opacity: 0.7, color: 0xffd9b8, fog: false, depthWrite: false,
     }));
     cl.position.set(Math.cos(a) * (320 + (i * 67) % 280), 150 + (i * 31) % 90, Math.sin(a) * (320 + (i * 53) % 260));
     const s = 130 + (i * 41) % 110;
@@ -160,7 +231,7 @@ export function buildMap(scene) {
     scene.add(cl);
   }
 
-  const mtnMat = new THREE.MeshStandardMaterial({ color: 0x93a9bd, roughness: 1, flatShading: true });
+  const mtnMat = new THREE.MeshStandardMaterial({ color: 0xa08a72, roughness: 1, flatShading: true });
   for (let i = 0; i < 14; i++) {
     const a = (i / 14) * Math.PI * 2 + 0.22;
     const h = 100 + (i * 47) % 130;
@@ -170,24 +241,16 @@ export function buildMap(scene) {
     scene.add(mtn);
   }
 
-  const boundMat = new THREE.MeshBasicMaterial({
-    color: 0x4fa8ff, transparent: true, opacity: 0.12, side: THREE.DoubleSide,
-  });
-  for (let i = 0; i < 4; i++) {
-    const w = new THREE.Mesh(new THREE.PlaneGeometry(ARENA * 2, 26), boundMat);
-    const a = i * Math.PI / 2;
-    w.position.set(Math.sin(a) * ARENA, 13, Math.cos(a) * ARENA);
-    w.rotation.y = a;
-    scene.add(w);
-  }
+  // (the sandstone perimeter wall is built in the layout section below)
 
   // --- primitive helpers (axis-aligned collision) ---
-  const box = (w, h, d, x, z, color, baseY = 0, { solid = true, rough = 0.85, emissive = 0, tex = null, texScale = 2 } = {}) => {
+  const box = (w, h, d, x, z, color, baseY = 0, { solid = true, rough = 0.85, emissive = 0, tex = null, texScale = 2, texY = null } = {}) => {
     let map = null;
     if (tex) {
       map = tex.clone();
       map.needsUpdate = true;
-      map.repeat.set(Math.max(0.5, Math.max(w, d) / texScale), Math.max(0.5, h / texScale));
+      // texY=1 stretches one tile over the full height so baked base-grime sits at the bottom
+      map.repeat.set(Math.max(0.5, Math.max(w, d) / texScale), texY ?? Math.max(0.5, h / texScale));
     }
     const m = new THREE.Mesh(
       new THREE.BoxGeometry(w, h, d),
@@ -370,7 +433,7 @@ export function buildMap(scene) {
     const W = 12, D = 9, H = 3;
     const x0 = cx - W / 2, x1 = cx + W / 2, z0 = cz - D / 2, z1 = cz + D / 2;
     const wood = 0x9c7a52;
-    const sid = { tex: T.siding, texScale: 1.6 };
+    const sid = { tex: T.wood, texScale: 2.2, texY: 1 };
     // ground floor walls
     wallRun('x', z1, x0, x1, 0, H, wallColor, [cx - 0.8, cx + 0.8, 0, 2.4], sid);
     wallRun('x', z0, x0, x1, 0, H, wallColor, [cx - 1, cx + 1, 1.0, 2.2], sid);
@@ -382,7 +445,13 @@ export function buildMap(scene) {
     frame('z', x0, cz, 1.0, 2, 1.2, trimColor);                // left window
     glass('x', z0, cx, 1.0, 1.9, 1.15);
     glass('z', x0, cz, 1.0, 1.9, 1.15);
-    box(W + 0.3, 0.25, D + 0.3, cx, cz, trimColor, -0.02, { solid: false }); // foundation skirt
+    // stone foundation strips (skip the doorway)
+    const found = { solid: false, tex: T.concrete, texScale: 2.5, texY: 1 };
+    box(cx - 0.9 - x0, 0.55, 0.42, (x0 + cx - 0.9) / 2, z1, 0xa9a49a, -0.02, found);
+    box(x1 - cx - 0.9, 0.55, 0.42, (cx + 0.9 + x1) / 2, z1, 0xa9a49a, -0.02, found);
+    box(W, 0.55, 0.42, cx, z0, 0xa9a49a, -0.02, found);
+    box(0.42, 0.55, D, x0, cz, 0xa9a49a, -0.02, found);
+    box(0.42, 0.55, D, x1, cz, 0xa9a49a, -0.02, found);
     // porch
     box(2.6, 0.15, 1.5, cx, z1 + 0.85, trimColor, 2.5);
     box(0.12, 2.5, 0.12, cx - 1.15, z1 + 1.45, trimColor);
@@ -459,7 +528,7 @@ export function buildMap(scene) {
     const W = 16, D = 12, H = 5;
     const steel = 0x8f9aa8, accent = 0x4f7fa8;
     const x0 = cx - W / 2, x1 = cx + W / 2, z0 = cz - D / 2, z1 = cz + D / 2;
-    const mt = { tex: T.metal, texScale: 1.5, rough: 0.55 };
+    const mt = { tex: T.concrete, texScale: 3, texY: 1, rough: 0.85 };
     wallRun('x', z1, x0, x1, 0, H, steel, [cx - 3, cx + 3, 0, 4], mt);
     wallRun('x', z0, x0, x1, 0, H, steel, [cx - 1, cx + 1, 0, 2.6], mt);
     wallRun('z', x0, z0, z1, 0, H, steel, [cz - 1.2, cz + 1.2, 1.4, 3.2], mt);
@@ -482,30 +551,44 @@ export function buildMap(scene) {
   };
 
   // ================= layout =================
-  // crossroads with lane dashes and sidewalks
-  box(3.6, 0.05, ARENA * 2, 0, 0, 0x70767e, 0, { solid: false, rough: 1 });
-  box(ARENA * 2, 0.05, 3.6, 0, 0, 0x70767e, 0, { solid: false, rough: 1 });
-  for (let v = -64; v <= 64; v += 8) {
-    if (Math.abs(v) < 12) continue;
-    box(0.24, 0.06, 2.4, 0, v, 0xd8dde2, 0, { solid: false, rough: 0.9 });
-    box(2.4, 0.06, 0.24, v, 0, 0xd8dde2, 0, { solid: false, rough: 0.9 });
-  }
-  for (const s of [-1, 1]) {
-    box(1.2, 0.07, ARENA * 2, s * 2.5, 0, 0x99a2ad, 0, { solid: false, rough: 0.95 });
-    box(ARENA * 2, 0.07, 1.2, 0, s * 2.5, 0x99a2ad, 0, { solid: false, rough: 0.95 });
+  // packed-dirt paths worn through the map
+  box(4.2, 0.05, ARENA * 2, 0, 0, 0xb59a6b, 0, { solid: false, rough: 1, tex: T.concrete, texScale: 6 });
+  box(ARENA * 2, 0.05, 4.2, 0, 0, 0xb59a6b, 0, { solid: false, rough: 1, tex: T.concrete, texScale: 6 });
+
+  // sandstone perimeter wall with concrete cap (replaces the energy barrier)
+  const brickOpts = { tex: T.brick, texScale: 2.4, texY: 1 };
+  const capColor = 0xb0a896;
+  for (const [bx, bz, bw, bd] of [
+    [0, -ARENA + 0.4, ARENA * 2, 0.8], [0, ARENA - 0.4, ARENA * 2, 0.8],
+    [-ARENA + 0.4, 0, 0.8, ARENA * 2], [ARENA - 0.4, 0, 0.8, ARENA * 2],
+  ]) {
+    box(bw, 4.2, bd, bx, bz, 0xc7b394, 0, brickOpts);
+    box(bw === 0.8 ? 1.1 : bw + 0.3, 0.3, bd === 0.8 ? 1.1 : bd + 0.3, bx, bz, capColor, 4.2, { tex: T.concrete, texScale: 3 });
   }
 
+  // alley walls near the spawn lanes (deadshot-style corridors)
+  const alley = (w, d, x, z) => {
+    box(w, 3.2, d, x, z, 0xc7b394, 0, brickOpts);
+    box(w === 0.6 ? 0.95 : w + 0.25, 0.28, d === 0.6 ? 0.95 : d + 0.25, x, z, capColor, 3.2, { tex: T.concrete, texScale: 3 });
+  };
+  alley(15, 0.6, -13.5, 47);
+  alley(0.6, 12, -6.5, 52);
+  alley(15, 0.6, 13.5, -47);
+  alley(0.6, 12, 6.5, -52);
+  alley(0.6, 14, 47, 13);
+  alley(0.6, 14, -47, -13);
+
   // center platform + pillars + flags
-  box(18, 1.5, 18, 0, 0, 0x97a4b5, 0, { rough: 0.7 });
-  box(2.2, 5, 2.2, -6, 6, 0x7e8da0, 1.5);
-  box(2.2, 5, 2.2, 6, -6, 0x7e8da0, 1.5);
+  box(18, 1.5, 18, 0, 0, 0xb3ada1, 0, { rough: 0.8, tex: T.concrete, texScale: 4 });
+  box(2.2, 5, 2.2, -6, 6, 0xa8a094, 1.5, { tex: T.concrete, texScale: 2, texY: 1 });
+  box(2.2, 5, 2.2, 6, -6, 0xa8a094, 1.5, { tex: T.concrete, texScale: 2, texY: 1 });
   box(0.12, 4.5, 0.12, 8, 8, 0x3a4250, 1.5);
   box(1.3, 0.75, 0.06, 8.8, 8, 0x4fc3f7, 5.0, { solid: false });
   box(0.12, 4.5, 0.12, -8, -8, 0x3a4250, 1.5);
   box(1.3, 0.75, 0.06, -8.8, -8, 0xff7043, 5.0, { solid: false });
 
-  house(-34, -26, 0xcfc5b4, 0x6b5848);
-  house(34, 26, 0xc9cfd6, 0x4a5a6b);
+  house(-34, -26, 0xd0793a, 0x6b5848); // painted orange barn-wood
+  house(34, 26, 0x7d8ca3, 0x4a5a6b);  // weathered slate-blue wood
   cabin(-30, 32, -1);
   cabin(30, -32, 1);
   warehouse(0, -46);
@@ -521,11 +604,15 @@ export function buildMap(scene) {
   barrel(23.8, -18.5); barrel(24.6, -17.2, 0x4f7fa8);
   barrel(-23.8, 18.5); barrel(-24.6, 17.2, 0x4f7fa8);
 
-  // mid cover walls
-  box(12, 3.2, 1.2, 0, 26, 0x8d9aac);
-  box(12, 3.2, 1.2, 0, -26, 0x8d9aac);
-  box(1.2, 3.2, 12, -22, 0, 0x8d9aac);
-  box(1.2, 3.2, 12, 22, 0, 0x8d9aac);
+  // mid cover walls — sandstone with concrete caps
+  const cover = (w, d, x, z) => {
+    box(w, 3.2, d, x, z, 0xc7b394, 0, brickOpts);
+    box(w + 0.25, 0.28, d + 0.25, x, z, capColor, 3.2, { tex: T.concrete, texScale: 3 });
+  };
+  cover(12, 1.2, 0, 26);
+  cover(12, 1.2, 0, -26);
+  cover(1.2, 12, -22, 0);
+  cover(1.2, 12, 22, 0);
 
   // crates (plank texture)
   const crate = { tex: T.planks, texScale: 1.25 };
@@ -568,8 +655,8 @@ export function buildMap(scene) {
   fence(-25.5, 36, 6, false);
   fence(25.5, -36, 6, false);
 
-  // grass tufts (visual only, deterministic spiral placement)
-  const grassMat = new THREE.MeshStandardMaterial({ color: 0x5d8f57, roughness: 1 });
+  // dry grass tufts (visual only, deterministic spiral placement)
+  const grassMat = new THREE.MeshStandardMaterial({ color: 0x9a8d52, roughness: 1 });
   for (let i = 0; i < 26; i++) {
     const a = i * 2.39996;
     const r = 14 + ((i * 73) % 46);

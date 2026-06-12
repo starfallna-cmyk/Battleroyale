@@ -193,16 +193,25 @@ canvas { display: block; }
   position: absolute; bottom: 22px; left: 22px;
   display: flex; align-items: center; gap: 12px;
 }
+#hpCross {
+  color: #43d94f; font-size: 30px; font-weight: 900;
+  text-shadow: 0 2px 6px rgba(0,0,0,.55);
+}
+#hpCol { display: flex; flex-direction: column; gap: 4px; }
 #hpBar {
-  width: 240px; height: 20px; border-radius: 10px; overflow: hidden;
-  background: rgba(10, 16, 32, .75); border: 2px solid rgba(255,255,255,.18);
+  width: 230px; height: 9px; border-radius: 5px; overflow: hidden;
+  background: rgba(10, 16, 32, .6);
 }
 #hpFill {
-  height: 100%; width: 100%; border-radius: 8px;
-  background: linear-gradient(90deg, #43d94f, #8bea5a);
+  height: 100%; width: 100%; border-radius: 5px;
+  background: linear-gradient(90deg, #e9eef6, #ffffff);
   transition: width .15s;
 }
-#hpText { color: #fff; font-weight: 900; font-size: 24px; text-shadow: 0 2px 4px rgba(0,0,0,.6); }
+#hpText {
+  color: #fff; font-weight: 900; font-size: 34px; line-height: 1;
+  text-shadow: 0 2px 6px rgba(0,0,0,.55);
+}
+#hpText .hp-suffix { font-size: 15px; font-weight: 800; color: #cdd7e8; margin-left: 5px; }
 
 #loadout {
   position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%);
@@ -228,7 +237,8 @@ canvas { display: block; }
 .slot-build.active svg { filter: drop-shadow(0 0 3px rgba(110, 200, 255, .7)); }
 
 #ammoWrap { position: absolute; bottom: 22px; right: 26px; text-align: right; }
-#weaponName { color: #c5d2ee; font-weight: 700; font-size: 16px; }
+#ammoIcon svg { width: 96px; height: 44px; fill: rgba(255,255,255,.92); filter: drop-shadow(0 2px 5px rgba(0,0,0,.45)); }
+#weaponName { color: #e6ecf7; font-weight: 800; font-size: 17px; text-shadow: 0 2px 5px rgba(0,0,0,.5); }
 #ammoText { color: #fff; font-weight: 900; font-size: 30px; text-shadow: 0 2px 4px rgba(0,0,0,.6); }
 #ammoText.reloading { color: #ffd54f; font-size: 22px; }
 #reloadBar {

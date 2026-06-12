@@ -163,8 +163,8 @@ export class Game {
     container.appendChild(this.renderer.domElement);
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x9cc2e3);
-    this.scene.fog = new THREE.Fog(0xa9c6de, 170, 850);
+    this.scene.background = new THREE.Color(0xdfa873);
+    this.scene.fog = new THREE.Fog(0xdfb084, 160, 820);
     // subtle image-based ambience makes metals/plastics read as real materials
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
@@ -310,7 +310,7 @@ export class Game {
     this.ui = {
       hpFill: el('hpFill'), hpText: el('hpText'),
       ammoText: el('ammoText'), weaponName: el('weaponName'),
-      reloadBar: el('reloadBar'), reloadFill: el('reloadFill'),
+      reloadBar: el('reloadBar'), reloadFill: el('reloadFill'), ammoIcon: el('ammoIcon'),
       scoreList: el('scoreList'), aliveBadge: el('aliveBadge'),
       killfeed: el('killfeed'), hitmarker: el('hitmarker'),
       damageFlash: el('damageFlash'), scope: el('scopeOverlay'),
@@ -846,8 +846,10 @@ export class Game {
     this.bloom = Math.min(0.045, this.bloom + w.bloom);
     this.gunKick = Math.min(0.25, this.gunKick + (w.scope ? 0.22 : 0.12));
 
-    const muzzle = this.camera.position.clone().addScaledVector(camDir, 1.2);
-    this.flashT = 0.05;
+    // flash/tracers/shells originate at the actual gun tip, not the camera
+    const muzzle = new THREE.Vector3();
+    this.meAvatar.muzzle.getWorldPosition(muzzle);
+    this.flashT = 0.04;
     this.flashLight.position.copy(muzzle);
     this.flashSprite.position.copy(muzzle);
     this.flashSprite.material.rotation = Math.random() * Math.PI;
@@ -1005,12 +1007,12 @@ export class Game {
     }
     if (this.flashT > 0) {
       this.flashT -= dt;
-      const f = Math.max(0, this.flashT / 0.05);
-      this.flashLight.intensity = f * 9;
+      const f = Math.max(0, this.flashT / 0.04);
+      this.flashLight.intensity = f * 6;
       this.flashSprite.visible = f > 0;
-      const fs = 0.45 + f * 0.5;
+      const fs = 0.18 + f * 0.22; // small — sits at the gun tip, not in your face
       this.flashSprite.scale.set(fs, fs, 1);
-      this.flashSprite.material.opacity = f;
+      this.flashSprite.material.opacity = f * 0.9;
     } else {
       this.flashSprite.visible = false;
     }
@@ -1447,8 +1449,9 @@ export class Game {
         const toV = new THREE.Vector3(...m.e);
         const w = WEAPONS[m.w] || WEAPONS[0];
         this._spawnTracer(fromV, toV, w.tracer);
-        this.flashT = 0.05;
+        this.flashT = 0.04;
         this.flashLight.position.copy(fromV);
+        this.flashSprite.position.copy(fromV);
         sfx[w.sound]();
         break;
       }
@@ -1490,11 +1493,11 @@ export class Game {
   _refreshHud() {
     this.ui.hpFill.style.width = `${Math.max(0, this.hp)}%`;
     this.ui.hpFill.style.background = this.hp > 50
-      ? 'linear-gradient(90deg,#43d94f,#8bea5a)'
+      ? 'linear-gradient(90deg,#e9eef6,#ffffff)'
       : this.hp > 25
         ? 'linear-gradient(90deg,#ffb300,#ffd54f)'
         : 'linear-gradient(90deg,#ff5252,#ff8a80)';
-    this.ui.hpText.textContent = Math.max(0, Math.round(this.hp));
+    this.ui.hpText.innerHTML = `${Math.max(0, Math.round(this.hp))}<span class="hp-suffix">HP</span>`;
 
     if (this.mode === 'weapon') {
       const w = WEAPONS[this.weaponIdx];
@@ -1549,7 +1552,11 @@ export class Game {
     document.querySelectorAll('.slot').forEach(s => s.classList.remove('active'));
     const slot = this.mode === 'weapon' ? `w${this.weaponIdx}` : `b${this.buildIdx}`;
     const elSlot = document.querySelector(`.slot[data-slot="${slot}"]`);
-    if (elSlot) elSlot.classList.add('active');
+    if (elSlot) {
+      elSlot.classList.add('active');
+      const svg = elSlot.querySelector('svg');
+      this.ui.ammoIcon.innerHTML = svg ? svg.outerHTML : '';
+    }
   }
 
   _showHitmarker(head) {

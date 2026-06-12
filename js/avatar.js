@@ -110,6 +110,9 @@ export class Avatar {
     // ----- held item mount -----
     this.mount = new THREE.Group();
     this.mount.position.set(0.26, 1.42, -0.12);
+    this.muzzle = new THREE.Object3D(); // world-space gun tip for flash/tracers
+    this.muzzle.position.set(0, 0.02, -1.1);
+    this.mount.add(this.muzzle);
     this.weapons = [0, 1, 2, 3].map(i => {
       const w = makeWeaponModel(i);
       w.position.z = -0.25;
