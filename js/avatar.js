@@ -146,12 +146,13 @@ export class Avatar {
 
   swing() { this.swingT = 0.35; }
 
-  update(dt, { speed = 0, grounded = true, pitch = 0, item = 0, recoilZ = 0, gliding = false } = {}) {
+  update(dt, { speed = 0, grounded = true, pitch = 0, item = 0, recoilZ = 0, gliding = false, reloading = false } = {}) {
     if (item !== this.item) {
       this.weapons.forEach((w, i) => { w.visible = i === item; });
       this.item = item;
     }
     this.glider.visible = gliding;
+    this.reloadAnim = reloading ? (this.reloadAnim || 0) + dt : 0;
 
     const k = Math.min(1, dt * 12);
     const amp = Math.min(1, speed / 6.8) * 0.6;
@@ -217,8 +218,21 @@ export class Avatar {
     }
 
     this.mount.rotation.x = pitch - chop;
+    this.mount.rotation.z = 0;
+    this.mount.position.y = 1.42;
     this.mount.position.z = -0.12 + recoilZ;
     this.head.rotation.x = pitch * 0.45;
+
+    // reload: gun tilts while the left hand drops to swap the mag
+    if (reloading && item <= 2 && !gliding) {
+      const dip = Math.sin(((this.reloadAnim % 1.4) / 1.4) * Math.PI); // 0 -> 1 -> 0 loop
+      this.mount.rotation.x = pitch - 0.35 * dip;
+      this.mount.rotation.z = 0.45 * dip;
+      this.mount.position.y = 1.42 - 0.08 * dip;
+      this.shL.rotation.x = Math.PI / 2 * 0.8 + pitch - 1.15 * dip;
+      this.elbL.rotation.x = -0.55 - 0.5 * dip;
+      this.shL.rotation.z = 0.7 - 0.45 * dip;
+    }
   }
 }
 

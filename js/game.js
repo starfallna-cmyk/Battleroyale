@@ -275,6 +275,7 @@ export class Game {
     this.ui = {
       hpFill: el('hpFill'), hpText: el('hpText'),
       ammoText: el('ammoText'), weaponName: el('weaponName'),
+      reloadBar: el('reloadBar'), reloadFill: el('reloadFill'),
       scoreList: el('scoreList'), aliveBadge: el('aliveBadge'),
       killfeed: el('killfeed'), hitmarker: el('hitmarker'),
       damageFlash: el('damageFlash'), scope: el('scopeOverlay'),
@@ -1233,6 +1234,7 @@ export class Game {
       item: this._item(),
       recoilZ: this.gunKick,
       gliding: this.gliding,
+      reloading: this.reloadT > 0,
     });
 
     const k = Math.min(1, dt * 14);
@@ -1245,7 +1247,7 @@ export class Game {
       p.curPitch += (p.targetPitch - p.curPitch) * k;
       p.avatar.update(dt, {
         speed: p.speed, grounded: p.grounded, pitch: p.curPitch,
-        item: p.item, gliding: p.gliding,
+        item: p.item, gliding: p.gliding, reloading: p.reloading,
       });
     }
 
@@ -1269,6 +1271,7 @@ export class Game {
         g: this.grounded ? 1 : 0,
         i: this._item(),
         gl: (this.gliding || this.phase === 'bus') ? 1 : 0,
+        r: this.reloadT > 0 ? 1 : 0,
       });
     }
   }
@@ -1338,6 +1341,7 @@ export class Game {
         p.grounded = !!m.g;
         p.item = m.i ?? 0;
         p.gliding = !!m.gl;
+        p.reloading = !!m.r;
         break;
       }
       case 'shoot': {
@@ -1402,17 +1406,22 @@ export class Game {
       if (w.melee) {
         this.ui.ammoText.textContent = '—';
         this.ui.ammoText.classList.remove('reloading');
+        this.ui.reloadBar.classList.add('hidden');
       } else if (this.reloadT > 0) {
         this.ui.ammoText.textContent = 'RELOADING…';
         this.ui.ammoText.classList.add('reloading');
+        this.ui.reloadBar.classList.remove('hidden');
+        this.ui.reloadFill.style.width = `${Math.min(100, (1 - this.reloadT / w.reload) * 100)}%`;
       } else {
         this.ui.ammoText.textContent = `${this.ammo[this.weaponIdx]} / ∞`;
         this.ui.ammoText.classList.remove('reloading');
+        this.ui.reloadBar.classList.add('hidden');
       }
     } else {
       this.ui.weaponName.textContent = ['Wall', 'Floor', 'Ramp'][this.buildIdx] + '  (F edits)';
       this.ui.ammoText.textContent = 'BUILD';
       this.ui.ammoText.classList.remove('reloading');
+      this.ui.reloadBar.classList.add('hidden');
     }
   }
 

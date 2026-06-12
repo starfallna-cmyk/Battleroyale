@@ -204,10 +204,25 @@ canvas { display: block; }
   position: absolute; top: 2px; left: 5px;
   font-size: 11px; font-weight: 800; color: #8fa3c8;
 }
+.slot svg {
+  width: 34px; height: 26px; margin-top: 6px;
+  fill: #c3cfe8; transition: fill .1s;
+}
 .slot.active { border-color: #ffb300; background: rgba(255, 179, 0, .22); }
+.slot.active svg { fill: #fff; filter: drop-shadow(0 0 3px rgba(255, 200, 80, .7)); }
 .slot-build.active { border-color: #4fc3f7; background: rgba(79, 195, 247, .22); }
+.slot-build.active svg { filter: drop-shadow(0 0 3px rgba(110, 200, 255, .7)); }
 
 #ammoWrap { position: absolute; bottom: 22px; right: 26px; text-align: right; }
 #weaponName { color: #c5d2ee; font-weight: 700; font-size: 16px; }
 #ammoText { color: #fff; font-weight: 900; font-size: 30px; text-shadow: 0 2px 4px rgba(0,0,0,.6); }
 #ammoText.reloading { color: #ffd54f; font-size: 22px; }
+#reloadBar {
+  width: 150px; height: 7px; margin-top: 5px; margin-left: auto;
+  background: rgba(10, 16, 32, .8); border-radius: 4px; overflow: hidden;
+  border: 1px solid rgba(255,255,255,.18);
+}
+#reloadFill {
+  height: 100%; width: 0%; border-radius: 3px;
+  background: linear-gradient(90deg, #ffb300, #ffd54f);
+}
