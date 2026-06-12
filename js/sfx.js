@@ -74,6 +74,8 @@ export const sfx = {
     } catch (e) { /* already torn down */ }
   },
   swing()    { burst(0.12, 0.12, 600); },
+  step()     { burst(0.04, 0.045, 480); },
+  land()     { tone(85, 0.18, 0.13, 'triangle'); burst(0.1, 0.08, 380); },
   thunk()    { tone(140, 0.22, 0.1, 'triangle'); burst(0.15, 0.08, 500); },
   pad()      { tone(330, 0.18, 0.12); setTimeout(() => tone(520, 0.16, 0.18), 60); },
   headshot() { tone(1320, 0.14, 0.09); },

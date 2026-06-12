@@ -7,18 +7,70 @@ export const ARENA = 70; // half-size of the playable square
 export const SPAWNS = [[-62, 0], [62, 0], [0, -62], [0, 62], [-52, 52], [52, -52]]
   .map(([x, z]) => ({ pos: [x, 0, z], yaw: Math.atan2(x, z) }));
 
+function canvasTex(w, h, draw) {
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  draw(cv.getContext('2d'), w, h);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = 4;
+  return tex;
+}
+
+// grayscale patterns tinted by each mesh's color
+const T = {
+  siding: canvasTex(64, 64, (c) => {
+    c.fillStyle = '#cdcdcd'; c.fillRect(0, 0, 64, 64);
+    for (let y = 0; y < 64; y += 16) {
+      c.fillStyle = '#9e9e9e'; c.fillRect(0, y + 13, 64, 3);
+      c.fillStyle = '#e3e3e3'; c.fillRect(0, y, 64, 2);
+    }
+  }),
+  metal: canvasTex(64, 64, (c) => {
+    c.fillStyle = '#c8c8c8'; c.fillRect(0, 0, 64, 64);
+    for (let x = 0; x < 64; x += 16) {
+      c.fillStyle = '#a2a2a2'; c.fillRect(x + 10, 0, 6, 64);
+      c.fillStyle = '#e0e0e0'; c.fillRect(x, 0, 2, 64);
+    }
+  }),
+  planks: canvasTex(64, 64, (c) => {
+    c.fillStyle = '#c9c9c9'; c.fillRect(0, 0, 64, 64);
+    for (let x = 0; x < 64; x += 21) {
+      c.fillStyle = '#a8a8a8'; c.fillRect(x, 0, 3, 64);
+    }
+    for (let i = 0; i < 9; i++) {
+      c.fillStyle = 'rgba(120,120,120,0.35)';
+      c.fillRect((i * 23) % 60, (i * 17) % 60, 8, 2);
+    }
+  }),
+  brick: canvasTex(64, 64, (c) => {
+    c.fillStyle = '#c4c4c4'; c.fillRect(0, 0, 64, 64);
+    c.fillStyle = '#9a9a9a';
+    for (let y = 0; y < 64; y += 16) {
+      c.fillRect(0, y + 13, 64, 3);
+      const off = (y / 16) % 2 ? 16 : 0;
+      for (let x = off; x < 64; x += 32) c.fillRect(x, y, 3, 13);
+    }
+  }),
+};
+
 function groundTexture() {
   const cv = document.createElement('canvas');
   cv.width = cv.height = 128;
   const c = cv.getContext('2d');
-  c.fillStyle = '#8da08b';
+  c.fillStyle = '#75906f';
   c.fillRect(0, 0, 128, 128);
-  c.strokeStyle = 'rgba(60,75,62,0.4)';
+  c.strokeStyle = 'rgba(60,75,62,0.35)';
   c.lineWidth = 2;
   c.strokeRect(1, 1, 126, 126);
-  for (let i = 0; i < 22; i++) {
-    c.fillStyle = `rgba(${90 + Math.random() * 40},${110 + Math.random() * 30},${85 + Math.random() * 30},0.25)`;
+  for (let i = 0; i < 26; i++) {
+    c.fillStyle = `rgba(${90 + Math.random() * 40},${110 + Math.random() * 30},${85 + Math.random() * 30},0.28)`;
     c.fillRect(Math.random() * 122, Math.random() * 122, 4 + Math.random() * 8, 4 + Math.random() * 8);
+  }
+  // tiny grass-blade ticks
+  for (let i = 0; i < 60; i++) {
+    c.fillStyle = `rgba(${60 + Math.random() * 30},${95 + Math.random() * 35},${60 + Math.random() * 25},0.5)`;
+    c.fillRect(Math.random() * 126, Math.random() * 124, 1.5, 3.5);
   }
   const tex = new THREE.CanvasTexture(cv);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
@@ -32,8 +84,9 @@ export function buildMap(scene) {
   const solids = [];
   const staticMeshes = [];
 
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x55657a, 1.0));
-  const sun = new THREE.DirectionalLight(0xfff4e0, 1.6);
+  // env map supplies ambient bounce, so the hemisphere stays subtle
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x55657a, 0.45));
+  const sun = new THREE.DirectionalLight(0xfff4e0, 1.5);
   sun.position.set(60, 100, 40);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
@@ -42,17 +95,80 @@ export function buildMap(scene) {
 
   const ground = new THREE.Mesh(
     new THREE.BoxGeometry(ARENA * 2, 1, ARENA * 2),
-    new THREE.MeshStandardMaterial({ map: groundTexture(), roughness: 0.95 }));
+    new THREE.MeshStandardMaterial({ map: groundTexture(), color: 0x91a091, roughness: 0.95 }));
   ground.position.y = -0.5;
   ground.receiveShadow = true;
   scene.add(ground);
 
   const outer = new THREE.Mesh(
-    new THREE.PlaneGeometry(1200, 1200),
-    new THREE.MeshStandardMaterial({ color: 0x6b7f6a, roughness: 1 }));
+    new THREE.PlaneGeometry(2400, 2400),
+    new THREE.MeshStandardMaterial({ color: 0x5e7459, roughness: 1 }));
   outer.rotation.x = -Math.PI / 2;
   outer.position.y = -0.55;
   scene.add(outer);
+
+  // ----- sky dome, sun, clouds, distant mountains -----
+  const skyTex = canvasTex(16, 256, (c) => {
+    const grad = c.createLinearGradient(0, 0, 0, 256);
+    grad.addColorStop(0, '#3f78c9');
+    grad.addColorStop(0.5, '#7fb0e3');
+    grad.addColorStop(0.72, '#b8d6ee');
+    grad.addColorStop(0.82, '#dcebf5');
+    grad.addColorStop(1, '#e8f0f4');
+    c.fillStyle = grad;
+    c.fillRect(0, 0, 16, 256);
+  });
+  skyTex.wrapS = skyTex.wrapT = THREE.ClampToEdgeWrapping;
+  const dome = new THREE.Mesh(
+    new THREE.SphereGeometry(950, 24, 16),
+    new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide, fog: false, depthWrite: false }));
+  scene.add(dome);
+
+  const sunTex = canvasTex(128, 128, (c) => {
+    const grad = c.createRadialGradient(64, 64, 4, 64, 64, 64);
+    grad.addColorStop(0, 'rgba(255,252,230,1)');
+    grad.addColorStop(0.25, 'rgba(255,244,190,0.9)');
+    grad.addColorStop(1, 'rgba(255,240,180,0)');
+    c.fillStyle = grad;
+    c.fillRect(0, 0, 128, 128);
+  });
+  const sunSpr = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: sunTex, blending: THREE.AdditiveBlending, fog: false, depthWrite: false,
+  }));
+  sunSpr.position.set(420, 660, 280);
+  sunSpr.scale.set(220, 220, 1);
+  scene.add(sunSpr);
+
+  const cloudTex = canvasTex(128, 64, (c) => {
+    for (const [bx, by, br] of [[36, 38, 22], [64, 30, 27], [92, 38, 21], [54, 42, 22], [80, 44, 18]]) {
+      const grad = c.createRadialGradient(bx, by, 2, bx, by, br);
+      grad.addColorStop(0, 'rgba(255,255,255,0.95)');
+      grad.addColorStop(0.7, 'rgba(255,255,255,0.5)');
+      grad.addColorStop(1, 'rgba(255,255,255,0)');
+      c.fillStyle = grad;
+      c.fillRect(0, 0, 128, 64);
+    }
+  });
+  for (let i = 0; i < 7; i++) {
+    const a = i * 0.9 + 0.4;
+    const cl = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: cloudTex, transparent: true, opacity: 0.85, fog: false, depthWrite: false,
+    }));
+    cl.position.set(Math.cos(a) * (320 + (i * 67) % 280), 150 + (i * 31) % 90, Math.sin(a) * (320 + (i * 53) % 260));
+    const s = 130 + (i * 41) % 110;
+    cl.scale.set(s, s * 0.42, 1);
+    scene.add(cl);
+  }
+
+  const mtnMat = new THREE.MeshStandardMaterial({ color: 0x93a9bd, roughness: 1, flatShading: true });
+  for (let i = 0; i < 14; i++) {
+    const a = (i / 14) * Math.PI * 2 + 0.22;
+    const h = 100 + (i * 47) % 130;
+    const mtn = new THREE.Mesh(new THREE.ConeGeometry(h * 1.5, h, 5), mtnMat);
+    mtn.position.set(Math.cos(a) * (560 + (i * 61) % 180), h / 2 - 10, Math.sin(a) * (560 + (i * 43) % 180));
+    mtn.rotation.y = i * 1.3;
+    scene.add(mtn);
+  }
 
   const boundMat = new THREE.MeshBasicMaterial({
     color: 0x4fa8ff, transparent: true, opacity: 0.12, side: THREE.DoubleSide,
@@ -66,16 +182,35 @@ export function buildMap(scene) {
   }
 
   // --- primitive helpers (axis-aligned collision) ---
-  const box = (w, h, d, x, z, color, baseY = 0, { solid = true, rough = 0.85, emissive = 0 } = {}) => {
+  const box = (w, h, d, x, z, color, baseY = 0, { solid = true, rough = 0.85, emissive = 0, tex = null, texScale = 2 } = {}) => {
+    let map = null;
+    if (tex) {
+      map = tex.clone();
+      map.needsUpdate = true;
+      map.repeat.set(Math.max(0.5, Math.max(w, d) / texScale), Math.max(0.5, h / texScale));
+    }
     const m = new THREE.Mesh(
       new THREE.BoxGeometry(w, h, d),
-      new THREE.MeshStandardMaterial({ color, roughness: rough, emissive, emissiveIntensity: emissive ? 1 : 0 }));
+      new THREE.MeshStandardMaterial({ color, map, roughness: rough, emissive, emissiveIntensity: emissive ? 1 : 0 }));
     m.position.set(x, baseY + h / 2, z);
     m.castShadow = m.receiveShadow = true;
     scene.add(m);
     staticMeshes.push(m);
     if (solid) solids.push(new THREE.Box3().setFromObject(m));
     return m;
+  };
+
+  const glassMat = new THREE.MeshStandardMaterial({
+    color: 0xbfe0ee, transparent: true, opacity: 0.32, roughness: 0.08, metalness: 0.5,
+  });
+  // window pane — purely visual, bullets and camera pass through
+  const glass = (axis, fixed, center, y0, gw, gh) => {
+    const geo = axis === 'x' ? new THREE.BoxGeometry(gw, gh, 0.05) : new THREE.BoxGeometry(0.05, gh, gw);
+    const m = new THREE.Mesh(geo, glassMat);
+    if (axis === 'x') m.position.set(center, y0 + gh / 2, fixed);
+    else m.position.set(fixed, y0 + gh / 2, center);
+    m.userData.noHit = m.userData.noCam = true;
+    scene.add(m);
   };
 
   const cyl = (r, h, x, z, color, baseY = 0, { solid = true, rough = 0.8, opacity = 1, rTop = null } = {}) => {
@@ -93,7 +228,7 @@ export function buildMap(scene) {
   };
 
   // wall running along X (fixed z) or Z (fixed x), with optional opening [from, to, yBottom, yTop]
-  const wallRun = (axis, fixed, from, to, y0, h, color, opening = null) => {
+  const wallRun = (axis, fixed, from, to, y0, h, color, opening = null, opts = {}) => {
     const th = 0.3;
     const segs = [];
     if (!opening) {
@@ -107,8 +242,8 @@ export function buildMap(scene) {
     }
     for (const [a, b, sy, sh] of segs) {
       const len = b - a, mid = (a + b) / 2;
-      if (axis === 'x') box(len, sh, th, mid, fixed, color, sy);
-      else box(th, sh, len, fixed, mid, color, sy);
+      if (axis === 'x') box(len, sh, th, mid, fixed, color, sy, opts);
+      else box(th, sh, len, fixed, mid, color, sy, opts);
     }
   };
 
@@ -235,15 +370,18 @@ export function buildMap(scene) {
     const W = 12, D = 9, H = 3;
     const x0 = cx - W / 2, x1 = cx + W / 2, z0 = cz - D / 2, z1 = cz + D / 2;
     const wood = 0x9c7a52;
+    const sid = { tex: T.siding, texScale: 1.6 };
     // ground floor walls
-    wallRun('x', z1, x0, x1, 0, H, wallColor, [cx - 0.8, cx + 0.8, 0, 2.4]);
-    wallRun('x', z0, x0, x1, 0, H, wallColor, [cx - 1, cx + 1, 1.0, 2.2]);
-    wallRun('z', x0, z0, z1, 0, H, wallColor, [cz - 1, cz + 1, 1.0, 2.2]);
-    wallRun('z', x1, z0, z1, 0, H, wallColor);
-    // trim
+    wallRun('x', z1, x0, x1, 0, H, wallColor, [cx - 0.8, cx + 0.8, 0, 2.4], sid);
+    wallRun('x', z0, x0, x1, 0, H, wallColor, [cx - 1, cx + 1, 1.0, 2.2], sid);
+    wallRun('z', x0, z0, z1, 0, H, wallColor, [cz - 1, cz + 1, 1.0, 2.2], sid);
+    wallRun('z', x1, z0, z1, 0, H, wallColor, null, sid);
+    // trim + glass
     frame('x', z1, cx, 0, 1.6, 2.4, trimColor, true);          // door frame
     frame('x', z0, cx, 1.0, 2, 1.2, trimColor);                // back window
     frame('z', x0, cz, 1.0, 2, 1.2, trimColor);                // left window
+    glass('x', z0, cx, 1.0, 1.9, 1.15);
+    glass('z', x0, cz, 1.0, 1.9, 1.15);
     box(W + 0.3, 0.25, D + 0.3, cx, cz, trimColor, -0.02, { solid: false }); // foundation skirt
     // porch
     box(2.6, 0.15, 1.5, cx, z1 + 0.85, trimColor, 2.5);
@@ -255,20 +393,23 @@ export function buildMap(scene) {
     box(W - 2.4, 0.25, D, cx - 1.2, cz, trimColor, H);
     box(2.4, 0.25, 2.8, x1 - 1.2, cz - 3.1, trimColor, H); // landing behind the top step
     // upper walls + framed windows
-    wallRun('x', z1, x0, x1, H, H, wallColor, [cx - 1, cx + 1, H + 1.0, H + 2.2]);
-    wallRun('x', z0, x0, x1, H, H, wallColor, [cx - 1, cx + 1, H + 1.0, H + 2.2]);
-    wallRun('z', x0, z0, z1, H, H, wallColor);
-    wallRun('z', x1, z0, z1, H, H, wallColor, [cz - 1, cz + 1, H + 1.0, H + 2.2]);
+    wallRun('x', z1, x0, x1, H, H, wallColor, [cx - 1, cx + 1, H + 1.0, H + 2.2], sid);
+    wallRun('x', z0, x0, x1, H, H, wallColor, [cx - 1, cx + 1, H + 1.0, H + 2.2], sid);
+    wallRun('z', x0, z0, z1, H, H, wallColor, null, sid);
+    wallRun('z', x1, z0, z1, H, H, wallColor, [cz - 1, cz + 1, H + 1.0, H + 2.2], sid);
     frame('x', z1, cx, H + 1.0, 2, 1.2, trimColor);
     frame('x', z0, cx, H + 1.0, 2, 1.2, trimColor);
     frame('z', x1, cz, H + 1.0, 2, 1.2, trimColor);
+    glass('x', z1, cx, H + 1.0, 1.9, 1.15);
+    glass('x', z0, cx, H + 1.0, 1.9, 1.15);
+    glass('z', x1, cz, H + 1.0, 1.9, 1.15);
     // roof, parapet, chimney, AC unit
     box(W, 0.25, D, cx, cz, trimColor, H * 2);
     box(W, 0.45, 0.25, cx, z0 + 0.12, trimColor, H * 2 + 0.25);
     box(W, 0.45, 0.25, cx, z1 - 0.12, trimColor, H * 2 + 0.25);
     box(0.25, 0.45, D, x0 + 0.12, cz, trimColor, H * 2 + 0.25);
     box(0.25, 0.45, D, x1 - 0.12, cz, trimColor, H * 2 + 0.25);
-    box(0.9, 1.6, 0.9, x0 + 1.4, z0 + 1.3, 0x8a4f43, H * 2);
+    box(0.9, 1.6, 0.9, x0 + 1.4, z0 + 1.3, 0x8a4f43, H * 2, { tex: T.brick, texScale: 0.8 });
     box(1.05, 0.15, 1.05, x0 + 1.4, z0 + 1.3, 0x2b2f38, H * 2 + 1.6, { solid: false });
     box(0.9, 0.55, 0.9, cx + 2, cz + 1, 0xb9c0c9, H * 2 + 0.25);
     // interior stairs
@@ -294,13 +435,16 @@ export function buildMap(scene) {
     const wood = 0x9c7a52, roof = 0x5f4a38, trim = 0x6e5238;
     const x0 = cx - W / 2, x1 = cx + W / 2, z0 = cz - D / 2, z1 = cz + D / 2;
     const zd = doorSide > 0 ? z1 : z0, zw = doorSide > 0 ? z0 : z1;
-    wallRun('x', zd, x0, x1, 0, H, wood, [cx - 0.75, cx + 0.75, 0, 2.3]);
-    wallRun('x', zw, x0, x1, 0, H, wood, [cx - 0.9, cx + 0.9, 1.0, 2.1]);
-    wallRun('z', x0, z0, z1, 0, H, wood, [cz - 0.9, cz + 0.9, 1.0, 2.1]);
-    wallRun('z', x1, z0, z1, 0, H, wood);
+    const pl = { tex: T.planks, texScale: 1.3 };
+    wallRun('x', zd, x0, x1, 0, H, wood, [cx - 0.75, cx + 0.75, 0, 2.3], pl);
+    wallRun('x', zw, x0, x1, 0, H, wood, [cx - 0.9, cx + 0.9, 1.0, 2.1], pl);
+    wallRun('z', x0, z0, z1, 0, H, wood, [cz - 0.9, cz + 0.9, 1.0, 2.1], pl);
+    wallRun('z', x1, z0, z1, 0, H, wood, null, pl);
     frame('x', zd, cx, 0, 1.5, 2.3, trim, true);
     frame('x', zw, cx, 1.0, 1.8, 1.1, trim);
     frame('z', x0, cz, 1.0, 1.8, 1.1, trim);
+    glass('x', zw, cx, 1.0, 1.7, 1.05);
+    glass('z', x0, cz, 1.0, 1.7, 1.05);
     box(W + 0.6, 0.3, D + 0.6, cx, cz, roof, H);
     box(0.7, 1.3, 0.7, x1 - 1.0, z0 + 0.9, 0x8a4f43, H + 0.3);
     // inside: cot, crate; outside: barrel
@@ -315,10 +459,11 @@ export function buildMap(scene) {
     const W = 16, D = 12, H = 5;
     const steel = 0x8f9aa8, accent = 0x4f7fa8;
     const x0 = cx - W / 2, x1 = cx + W / 2, z0 = cz - D / 2, z1 = cz + D / 2;
-    wallRun('x', z1, x0, x1, 0, H, steel, [cx - 3, cx + 3, 0, 4]);
-    wallRun('x', z0, x0, x1, 0, H, steel, [cx - 1, cx + 1, 0, 2.6]);
-    wallRun('z', x0, z0, z1, 0, H, steel, [cz - 1.2, cz + 1.2, 1.4, 3.2]);
-    wallRun('z', x1, z0, z1, 0, H, steel, [cz - 1.2, cz + 1.2, 1.4, 3.2]);
+    const mt = { tex: T.metal, texScale: 1.5, rough: 0.55 };
+    wallRun('x', z1, x0, x1, 0, H, steel, [cx - 3, cx + 3, 0, 4], mt);
+    wallRun('x', z0, x0, x1, 0, H, steel, [cx - 1, cx + 1, 0, 2.6], mt);
+    wallRun('z', x0, z0, z1, 0, H, steel, [cz - 1.2, cz + 1.2, 1.4, 3.2], mt);
+    wallRun('z', x1, z0, z1, 0, H, steel, [cz - 1.2, cz + 1.2, 1.4, 3.2], mt);
     frame('x', z1, cx, 0, 6, 4, accent, true);
     box(W, 0.3, D, cx, cz, accent, H);
     for (const vx of [-4.5, 0, 4.5]) box(0.8, 0.5, 0.8, cx + vx, cz, steel, H + 0.3);
@@ -337,9 +482,18 @@ export function buildMap(scene) {
   };
 
   // ================= layout =================
-  // crossroads (visual asphalt strips)
+  // crossroads with lane dashes and sidewalks
   box(3.6, 0.05, ARENA * 2, 0, 0, 0x70767e, 0, { solid: false, rough: 1 });
   box(ARENA * 2, 0.05, 3.6, 0, 0, 0x70767e, 0, { solid: false, rough: 1 });
+  for (let v = -64; v <= 64; v += 8) {
+    if (Math.abs(v) < 12) continue;
+    box(0.24, 0.06, 2.4, 0, v, 0xd8dde2, 0, { solid: false, rough: 0.9 });
+    box(2.4, 0.06, 0.24, v, 0, 0xd8dde2, 0, { solid: false, rough: 0.9 });
+  }
+  for (const s of [-1, 1]) {
+    box(1.2, 0.07, ARENA * 2, s * 2.5, 0, 0x99a2ad, 0, { solid: false, rough: 0.95 });
+    box(ARENA * 2, 0.07, 1.2, 0, s * 2.5, 0x99a2ad, 0, { solid: false, rough: 0.95 });
+  }
 
   // center platform + pillars + flags
   box(18, 1.5, 18, 0, 0, 0x97a4b5, 0, { rough: 0.7 });
@@ -356,13 +510,14 @@ export function buildMap(scene) {
   cabin(30, -32, 1);
   warehouse(0, -46);
 
-  // shipping containers + barrels
-  box(2.6, 2.8, 8, 26, -16, 0x4f7fa8);
-  box(2.6, 2.8, 8, 29.4, -13, 0xa85f4f);
-  box(2.6, 2.8, 8, 27.7, -14.5, 0x6b8f5a, 2.8);
-  box(2.6, 2.8, 8, -26, 16, 0x4f7fa8);
-  box(2.6, 2.8, 8, -29.4, 13, 0xa85f4f);
-  box(2.6, 2.8, 8, -27.7, 14.5, 0x6b8f5a, 2.8);
+  // shipping containers (corrugated) + barrels
+  const corr = { tex: T.metal, texScale: 1.1, rough: 0.5 };
+  box(2.6, 2.8, 8, 26, -16, 0x4f7fa8, 0, corr);
+  box(2.6, 2.8, 8, 29.4, -13, 0xa85f4f, 0, corr);
+  box(2.6, 2.8, 8, 27.7, -14.5, 0x6b8f5a, 2.8, corr);
+  box(2.6, 2.8, 8, -26, 16, 0x4f7fa8, 0, corr);
+  box(2.6, 2.8, 8, -29.4, 13, 0xa85f4f, 0, corr);
+  box(2.6, 2.8, 8, -27.7, 14.5, 0x6b8f5a, 2.8, corr);
   barrel(23.8, -18.5); barrel(24.6, -17.2, 0x4f7fa8);
   barrel(-23.8, 18.5); barrel(-24.6, 17.2, 0x4f7fa8);
 
@@ -372,15 +527,16 @@ export function buildMap(scene) {
   box(1.2, 3.2, 12, -22, 0, 0x8d9aac);
   box(1.2, 3.2, 12, 22, 0, 0x8d9aac);
 
-  // crates
-  box(2.5, 2.5, 2.5, -14, -8, 0xc0824f);
-  box(2.5, 2.5, 2.5, 14, 8, 0xc0824f);
-  box(2.5, 2.5, 2.5, 44, -10, 0xc0824f);
-  box(2.5, 2.5, 2.5, 46.5, -10, 0xb8743f);
-  box(2.5, 2.5, 2.5, 45.25, -10, 0xa8663f, 2.5);
-  box(2.5, 2.5, 2.5, -44, 10, 0xc0824f);
-  box(2.5, 2.5, 2.5, -46.5, 10, 0xb8743f);
-  box(2.5, 2.5, 2.5, -45.25, 10, 0xa8663f, 2.5);
+  // crates (plank texture)
+  const crate = { tex: T.planks, texScale: 1.25 };
+  box(2.5, 2.5, 2.5, -14, -8, 0xc0824f, 0, crate);
+  box(2.5, 2.5, 2.5, 14, 8, 0xc0824f, 0, crate);
+  box(2.5, 2.5, 2.5, 44, -10, 0xc0824f, 0, crate);
+  box(2.5, 2.5, 2.5, 46.5, -10, 0xb8743f, 0, crate);
+  box(2.5, 2.5, 2.5, 45.25, -10, 0xa8663f, 2.5, crate);
+  box(2.5, 2.5, 2.5, -44, 10, 0xc0824f, 0, crate);
+  box(2.5, 2.5, 2.5, -46.5, 10, 0xb8743f, 0, crate);
+  box(2.5, 2.5, 2.5, -45.25, 10, 0xa8663f, 2.5, crate);
 
   // cars on the roads + streetlamps
   car(-0.9, 30, true, 0xa83b3b);   // N-S road: length along Z

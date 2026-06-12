@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { BuildSystem, BUILD_TYPES } from './builds.js';
 import { WEAPONS, damageAt } from './weapons.js';
 import { Avatar, makeNameLabel } from './avatar.js';
@@ -156,11 +157,17 @@ export class Game {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.02;
     container.appendChild(this.renderer.domElement);
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x9cc2e3);
-    this.scene.fog = new THREE.Fog(0x9cc2e3, 130, 420);
+    this.scene.fog = new THREE.Fog(0xa9c6de, 170, 850);
+    // subtle image-based ambience makes metals/plastics read as real materials
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 
     this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 600);
     this.camera.rotation.order = 'YXZ';
@@ -268,6 +275,34 @@ export class Game {
     this.flashLight = new THREE.PointLight(0xffc66e, 0, 10);
     this.scene.add(this.flashLight);
     this.flashT = 0;
+    // visible muzzle flash star
+    const flashCv = document.createElement('canvas');
+    flashCv.width = flashCv.height = 64;
+    const fc = flashCv.getContext('2d');
+    const fg = fc.createRadialGradient(32, 32, 2, 32, 32, 30);
+    fg.addColorStop(0, 'rgba(255,250,220,1)');
+    fg.addColorStop(0.35, 'rgba(255,200,90,0.9)');
+    fg.addColorStop(1, 'rgba(255,150,40,0)');
+    fc.fillStyle = fg;
+    fc.beginPath();
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      const r = i % 2 ? 13 : 31;
+      fc[i ? 'lineTo' : 'moveTo'](32 + Math.cos(a) * r, 32 + Math.sin(a) * r);
+    }
+    fc.closePath();
+    fc.fill();
+    this.flashSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: new THREE.CanvasTexture(flashCv), blending: THREE.AdditiveBlending,
+      depthWrite: false, transparent: true,
+    }));
+    this.flashSprite.visible = false;
+    this.flashSprite.raycast = () => {};
+    this.scene.add(this.flashSprite);
+
+    this.shells = [];
+    this.camRoll = 0;
+    this.stepD = 0;
 
     this.keys = {};
     this._bindInput();
@@ -575,6 +610,8 @@ export class Game {
     }
 
     const boxes = this._nearbyBoxes();
+    const wasGrounded = this.grounded;
+    const fallV = this.vel.y;
 
     this.pos.x += this.vel.x * dt;
     this._resolveAxis(boxes, 'x');
@@ -605,6 +642,19 @@ export class Game {
     }
 
     if (this.grounded && this.phase === 'sky') this.phase = 'normal';
+
+    // landing thud + footsteps
+    if (!wasGrounded && this.grounded && fallV < -10) {
+      sfx.land();
+      this.gunKick = Math.min(0.25, this.gunKick + 0.12);
+    }
+    if (this.grounded && this.phase === 'normal') {
+      const sp = Math.hypot(this.vel.x, this.vel.z);
+      if (sp > 1) {
+        this.stepD += sp * dt;
+        if (this.stepD > 2.6) { this.stepD = 0; sfx.step(); }
+      }
+    }
 
     if (this.grounded) {
       for (const p of this.pads) {
@@ -694,8 +744,7 @@ export class Game {
       this._tryFire();
     }
 
-    this.ui.crosshair.style.transform =
-      `translate(-50%,-50%) scale(${(1 + this.bloom * 26).toFixed(2)})`;
+    this.ui.crosshair.style.setProperty('--sp', `${(5 + this.bloom * 240).toFixed(1)}px`);
     const scoped = this.ads && this.mode === 'weapon' && WEAPONS[this.weaponIdx].scope;
     this.ui.scope.classList.toggle('hidden', !scoped);
   }
@@ -800,6 +849,10 @@ export class Game {
     const muzzle = this.camera.position.clone().addScaledVector(camDir, 1.2);
     this.flashT = 0.05;
     this.flashLight.position.copy(muzzle);
+    this.flashSprite.position.copy(muzzle);
+    this.flashSprite.material.rotation = Math.random() * Math.PI;
+    this.camRoll += (Math.random() - 0.5) * w.kick * 5;
+    this._spawnShell(muzzle, camDir);
 
     const spreadBase = w.spread * (this.ads ? w.adsSpread : 1) + this.bloom;
     const dmgByPlayer = new Map();
@@ -873,6 +926,24 @@ export class Game {
   }
 
   // ===================== effects =====================
+  _spawnShell(muzzle, camDir) {
+    if (this.shells.length > 24) return;
+    const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(0.025, 0.025, 0.06),
+      new THREE.MeshStandardMaterial({ color: 0xc9a14e, roughness: 0.3, metalness: 0.9 }));
+    mesh.position.copy(muzzle).addScaledVector(camDir, -0.5).addScaledVector(right, 0.12);
+    mesh.userData.noHit = true;
+    this.scene.add(mesh);
+    this.shells.push({
+      mesh,
+      vel: right.clone().multiplyScalar(1.6 + Math.random())
+        .add(new THREE.Vector3(0, 2.2 + Math.random(), 0)),
+      rot: new THREE.Vector3(Math.random() * 14, Math.random() * 14, Math.random() * 14),
+      life: 0.9,
+    });
+  }
+
   _spawnTracer(from, to, color) {
     if (!color) return;
     const geo = new THREE.BufferGeometry().setFromPoints([from, to]);
@@ -934,7 +1005,31 @@ export class Game {
     }
     if (this.flashT > 0) {
       this.flashT -= dt;
-      this.flashLight.intensity = Math.max(0, this.flashT / 0.05) * 9;
+      const f = Math.max(0, this.flashT / 0.05);
+      this.flashLight.intensity = f * 9;
+      this.flashSprite.visible = f > 0;
+      const fs = 0.45 + f * 0.5;
+      this.flashSprite.scale.set(fs, fs, 1);
+      this.flashSprite.material.opacity = f;
+    } else {
+      this.flashSprite.visible = false;
+    }
+    // shell casings
+    for (let i = this.shells.length - 1; i >= 0; i--) {
+      const s = this.shells[i];
+      s.life -= dt;
+      s.vel.y -= 11 * dt;
+      s.mesh.position.addScaledVector(s.vel, dt);
+      s.mesh.rotation.x += s.rot.x * dt;
+      s.mesh.rotation.y += s.rot.y * dt;
+      s.mesh.rotation.z += s.rot.z * dt;
+      if (s.life < 0.2) s.mesh.scale.setScalar(Math.max(0.01, s.life / 0.2));
+      if (s.life <= 0) {
+        this.scene.remove(s.mesh);
+        s.mesh.geometry.dispose();
+        s.mesh.material.dispose();
+        this.shells.splice(i, 1);
+      }
     }
     for (const d of this.dummies) {
       if (!d.alive) {
@@ -1181,7 +1276,8 @@ export class Game {
     this.camera.fov += (targetFov - this.camera.fov) * Math.min(1, dt * 12);
     this.camera.updateProjectionMatrix();
 
-    this.camera.rotation.set(this.pitch, this.yaw, 0);
+    this.camRoll *= 1 - Math.min(1, dt * 9);
+    this.camera.rotation.set(this.pitch, this.yaw, this.camRoll);
 
     const look = new THREE.Vector3(
       -Math.sin(this.yaw) * Math.cos(this.pitch),

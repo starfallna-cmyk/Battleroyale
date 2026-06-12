@@ -3,20 +3,26 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>1V1 BATTLE — Build &amp; Shoot</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚔️</text></svg>" />
+  <title>KILLSHOT — Build &amp; Shoot Battle Royale</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;600;800;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/style.css" />
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
   <script type="importmap">
-    { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    { "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    } }
   </script>
 </head>
 <body>
   <!-- ===== MENU ===== -->
   <div id="menu" class="screen">
     <div class="menu-box">
-      <h1 class="title">1V1<span>.BATTLE</span></h1>
-      <p class="subtitle">build &middot; shoot &middot; win</p>
+      <h1 class="title">KILL<span>SHOT</span></h1>
+      <p class="subtitle">build &middot; fight &middot; last one standing</p>
 
       <input id="nameInput" type="text" maxlength="12" placeholder="Your name" autocomplete="off" />
 
@@ -43,7 +49,7 @@
 
   <!-- ===== HUD ===== -->
   <div id="hud" class="hidden">
-    <div id="crosshair">+</div>
+    <div id="crosshair"><i class="ch ch-t"></i><i class="ch ch-b"></i><i class="ch ch-l"></i><i class="ch ch-r"></i><i class="ch-dot"></i></div>
     <div id="hitmarker">✕</div>
     <div id="damageFlash"></div>
     <div id="scopeOverlay" class="hidden"></div>

@@ -1,6 +1,6 @@
-# ⚔️ 1V1.BATTLE — Build & Shoot
+# 🎯 KILLSHOT — Build & Shoot Battle Royale
 
-A browser-based third-person build-fight shooter inspired by 1v1.lol and Fortnite. Drop from the battle bus, build and edit structures, and out-gun **up to 6 players** online — no server or account needed.
+A browser-based third-person build-fight battle royale. Drop from the battle bus, build and edit structures, and out-gun **up to 6 players** online — no server or account needed.
 
 ## 🎮 Play
 

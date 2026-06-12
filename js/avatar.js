@@ -219,7 +219,8 @@ export class Avatar {
 
     this.mount.rotation.x = pitch - chop;
     this.mount.rotation.z = 0;
-    this.mount.position.y = 1.42;
+    // subtle weapon bob while running
+    this.mount.position.y = 1.42 + (grounded ? Math.sin(this.walkT * 2) * 0.014 * amp : 0);
     this.mount.position.z = -0.12 + recoilZ;
     this.head.rotation.x = pitch * 0.45;
 
