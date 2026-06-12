@@ -35,6 +35,13 @@ Online matches are **battle royale**: everyone waits in the lobby and **readies 
 
 Builds snap to a grid, have HP, and can be shot down. Hold left click in build mode to turbo-build; look up while building to place a level higher. Press `F` on a wall to toggle a window into it, or on a ramp to flip its direction. Headshots deal bonus damage, rifles lose damage at long range, and the sniper only one-shots on a headshot.
 
+## 🔌 Connection troubleshooting
+
+Online play is direct peer-to-peer. If a friend can't join:
+
+- Make sure **everyone hard-refreshes** the page (`Ctrl+F5`) so all players run the same version — mismatches now show a clear error.
+- If joining times out with a network error, a router/firewall on one side is blocking peer-to-peer (common on school/office networks and some ISPs). Having one player switch networks — a **phone hotspot** usually works — fixes it.
+
 ## 🛠 Run locally
 
 Any static file server works:

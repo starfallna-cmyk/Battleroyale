@@ -178,30 +178,33 @@ export function buildMap(scene) {
   };
 
   const tree = (x, z) => {
-    const trunk = cyl(0.26, 2.8, x, z, 0x6b4a2f, 0, { solid: false, rough: 0.9 });
+    // tall visible trunk — low foliage reads as "buried" from the air
+    const trunk = cyl(0.28, 4.4, x, z, 0x6b4a2f, 0, { solid: false, rough: 0.9 });
     trunk.castShadow = true;
     solids.push(new THREE.Box3(
-      new THREE.Vector3(x - 0.3, 0, z - 0.3), new THREE.Vector3(x + 0.3, 2.8, z + 0.3)));
+      new THREE.Vector3(x - 0.32, 0, z - 0.32), new THREE.Vector3(x + 0.32, 4.4, z + 0.32)));
     const g1 = new THREE.Mesh(new THREE.SphereGeometry(1.5, 10, 8),
       new THREE.MeshStandardMaterial({ color: 0x4a7c45, roughness: 0.95 }));
-    g1.position.set(x, 3.4, z);
-    const g2 = new THREE.Mesh(new THREE.SphereGeometry(1.0, 10, 8),
+    g1.position.set(x, 5.0, z);
+    const g2 = new THREE.Mesh(new THREE.SphereGeometry(1.05, 10, 8),
       new THREE.MeshStandardMaterial({ color: 0x568f50, roughness: 0.95 }));
-    g2.position.set(x + 0.3, 4.4, z - 0.2);
+    g2.position.set(x + 0.3, 6.1, z - 0.2);
     g1.castShadow = g2.castShadow = true;
+    g1.userData.noCam = g2.userData.noCam = true; // camera passes through leaves
     scene.add(g1, g2);
     staticMeshes.push(g1, g2);
   };
 
   const pine = (x, z) => {
-    cyl(0.22, 1.6, x, z, 0x5d4027, 0, { solid: false });
+    cyl(0.24, 2.6, x, z, 0x5d4027, 0, { solid: false });
     solids.push(new THREE.Box3(
-      new THREE.Vector3(x - 0.26, 0, z - 0.26), new THREE.Vector3(x + 0.26, 1.6, z + 0.26)));
+      new THREE.Vector3(x - 0.28, 0, z - 0.28), new THREE.Vector3(x + 0.28, 2.6, z + 0.28)));
     const mat = new THREE.MeshStandardMaterial({ color: 0x3d6b3a, roughness: 0.95 });
-    for (const [r, h, y] of [[1.7, 2.2, 1.2], [1.3, 1.9, 2.6], [0.85, 1.7, 3.9]]) {
+    for (const [r, h, y] of [[1.7, 2.3, 2.2], [1.3, 2.0, 3.8], [0.85, 1.8, 5.2]]) {
       const cone = new THREE.Mesh(new THREE.ConeGeometry(r, h, 10), mat);
       cone.position.set(x, y + h / 2, z);
       cone.castShadow = true;
+      cone.userData.noCam = true;
       scene.add(cone);
       staticMeshes.push(cone);
     }
@@ -247,10 +250,10 @@ export function buildMap(scene) {
     box(0.12, 2.5, 0.12, cx - 1.15, z1 + 1.45, trimColor);
     box(0.12, 2.5, 0.12, cx + 1.15, z1 + 1.45, trimColor);
     box(2.2, 0.18, 1.6, cx, z1 + 0.9, trimColor, 0, { solid: false });
-    // second floor slab with a stairwell opening (z cz-2.5..cz+1.0 in the +x strip)
+    // second floor slab; the whole +x strip from the stairs forward stays open
+    // (a partial ceiling over the steps head-blocks players walking back down)
     box(W - 2.4, 0.25, D, cx - 1.2, cz, trimColor, H);
-    box(2.4, 0.25, 3.5, x1 - 1.2, cz + 2.75, trimColor, H);
-    box(2.4, 0.25, 2.0, x1 - 1.2, cz - 3.5, trimColor, H);
+    box(2.4, 0.25, 2.8, x1 - 1.2, cz - 3.1, trimColor, H); // landing behind the top step
     // upper walls + framed windows
     wallRun('x', z1, x0, x1, H, H, wallColor, [cx - 1, cx + 1, H + 1.0, H + 2.2]);
     wallRun('x', z0, x0, x1, H, H, wallColor, [cx - 1, cx + 1, H + 1.0, H + 2.2]);

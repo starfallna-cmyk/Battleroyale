@@ -5,6 +5,26 @@
 const PREFIX = 'ovob1v1-';
 export const MAX_PLAYERS = 6;
 
+// bump when messages change shape — mismatched clients get a clear error
+export const PROTO = 7;
+
+// extra STUN servers improve NAT traversal odds (PeerJS's defaults plus these)
+const PEER_OPTS = {
+  config: {
+    iceServers: [
+      { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+      { urls: 'stun:stun.cloudflare.com:3478' },
+      { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478'],
+        username: 'peerjs', credential: 'peerjsp' },
+    ],
+    sdpSemantics: 'unified-plan',
+  },
+};
+
+const CONNECT_TIMEOUT = 14000;
+const NAT_HELP = 'Could not reach the host — a router/firewall on one side is blocking '
+  + 'peer-to-peer. Try again, or have one player switch networks (a phone hotspot usually works).';
+
 export class Net {
   constructor() {
     this.peer = null;
@@ -27,7 +47,7 @@ export class Net {
   host(code, { onWaiting, onError }) {
     this.isHost = true;
     this.myId = 0;
-    this.peer = new Peer(PREFIX + code);
+    this.peer = new Peer(PREFIX + code, PEER_OPTS);
     this.peer.on('open', () => onWaiting(code));
     this.peer.on('connection', (conn) => {
       if (this.conns.size >= MAX_PLAYERS - 1) {
@@ -37,7 +57,7 @@ export class Net {
       const id = this._nextId++;
       conn.on('open', () => {
         this.conns.set(id, conn);
-        conn.send({ t: 'id', id });
+        conn.send({ t: 'id', id, pv: PROTO });
         if (this.onPeerJoin) this.onPeerJoin(id);
       });
       conn.on('data', (d) => {
@@ -65,23 +85,36 @@ export class Net {
 
   join(code, { onConnected, onError }) {
     this.isHost = false;
-    this.peer = new Peer();
+    let settled = false;
+    const fail = (msg) => { if (!settled) { settled = true; onError(msg); } };
+    this.peer = new Peer(PEER_OPTS);
     this.peer.on('open', () => {
       const conn = this.peer.connect(PREFIX + code, { reliable: true });
       this.hostConn = conn;
+      // if the data channel never opens (NAT/firewall), say so instead of hanging
+      const timer = setTimeout(() => fail(NAT_HELP), CONNECT_TIMEOUT);
       conn.on('data', (d) => {
         if (!d || typeof d !== 'object') return;
-        if (d.t === 'id') { this.myId = d.id; onConnected(d.id); return; }
-        if (d.t === 'full') { onError('That game is full (6 players max).'); return; }
+        if (d.t === 'id') {
+          clearTimeout(timer);
+          if (d.pv !== PROTO) {
+            fail('Game version mismatch — everyone should hard-refresh the page (Ctrl+F5) and retry.');
+            return;
+          }
+          this.myId = d.id;
+          if (!settled) { settled = true; onConnected(d.id); }
+          return;
+        }
+        if (d.t === 'full') { clearTimeout(timer); fail('That game is full (6 players max).'); return; }
         if (d.t === 'leave') { if (this.onPeerLeave) this.onPeerLeave(d.f); return; }
         if (this.onMessage) this.onMessage(d.f ?? 0, d);
       });
-      conn.on('close', () => this._fireClose());
-      conn.on('error', () => this._fireClose());
+      conn.on('close', () => { if (!settled) fail(NAT_HELP); else this._fireClose(); });
+      conn.on('error', () => { if (!settled) fail(NAT_HELP); else this._fireClose(); });
     });
     this.peer.on('error', (e) => {
-      if (e.type === 'peer-unavailable') onError('Game not found — check the code.');
-      else if (!this.hostConn || !this.hostConn.open) onError('Connection error: ' + e.type);
+      if (e.type === 'peer-unavailable') fail('Game not found — check the code.');
+      else if (!this.hostConn || !this.hostConn.open) fail('Connection error: ' + e.type);
     });
     this.peer.on('disconnected', () => { if (!this._closed) this.peer.reconnect(); });
   }

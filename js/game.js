@@ -3,6 +3,7 @@ import { BuildSystem, BUILD_TYPES } from './builds.js';
 import { WEAPONS, damageAt } from './weapons.js';
 import { Avatar, makeNameLabel } from './avatar.js';
 import { buildMap, ARENA, SPAWNS } from './map.js';
+import { PROTO } from './net.js';
 import { sfx } from './sfx.js';
 
 // ===== Tuning =====
@@ -229,7 +230,7 @@ export class Game {
           });
         };
       }
-      net.send({ t: 'hello', name: this.myName });
+      net.send({ t: 'hello', name: this.myName, pv: PROTO });
     }
 
     // --- practice dummies ---
@@ -1201,7 +1202,7 @@ export class Game {
     const blockers = [...this.builds.group.children, ...this.staticMeshes, this.groundMesh];
     const hits = this.raycaster.intersectObjects(blockers, true);
     for (const h of hits) {
-      if (h.object.userData.noHit) continue;
+      if (h.object.userData.noHit || h.object.userData.noCam) continue;
       dist = Math.max(0.4, h.distance - 0.25);
       break;
     }
@@ -1277,6 +1278,9 @@ export class Game {
     switch (m.t) {
       case 'hello':
         this._setPlayerName(from, (m.name || 'Player').slice(0, 12));
+        if (m.pv !== PROTO) {
+          this._feed(`⚠ ${(m.name || 'A player')} has an old game version — ask them to hard-refresh (Ctrl+F5)`);
+        }
         this._refreshLobby();
         this._maybeStart();
         break;
