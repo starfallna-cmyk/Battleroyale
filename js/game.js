@@ -27,6 +27,15 @@ const TURBO_BUILD = 0.12;
 const BUS_TIME = 15;      // seconds for the bus to cross the island
 
 const COLORS = [0x4fc3f7, 0xff7043, 0x9ccc65, 0xffd54f, 0xba68c8, 0x4dd0e1];
+// storm phases: hold at r, then shrink to the next phase's r. dmg = HP/sec outside.
+const STORM_PHASES = [
+  { r: 360, hold: 22, shrink: 26, dmg: 1 },
+  { r: 230, hold: 18, shrink: 22, dmg: 2 },
+  { r: 140, hold: 16, shrink: 20, dmg: 4 },
+  { r: 80, hold: 14, shrink: 18, dmg: 6 },
+  { r: 38, hold: 12, shrink: 16, dmg: 9 },
+  { r: 14, hold: 999, shrink: 0, dmg: 13 },
+];
 const BUS_FROM = new THREE.Vector3(-360, 150, -220);
 const BUS_TO = new THREE.Vector3(360, 150, 220);
 
@@ -190,6 +199,7 @@ export class Game {
     this.water = world.water;
     this.sun = this.scene.userData.sun;
     this.swimming = false;
+    this.sprinting = false;
     this.lobbyAnchor = { x: SPAWNS[0].pos[0], y: SPAWNS[0].pos[1], z: SPAWNS[0].pos[2] };
 
     this.builds = new BuildSystem(this.scene);
@@ -242,6 +252,7 @@ export class Game {
               [pid, s.name, s.wins, s.ready ? 1 : 0, s.alive ? 1 : 0]),
             state: this.state === 'match' ? 'match' : 'lobby',
             builds: this.state === 'match' ? this.builds.serialize() : [],
+            zone: this.zone || null,
           });
         };
       }
@@ -316,6 +327,20 @@ export class Game {
     this.camRoll = 0;
     this.stepD = 0;
 
+    // --- storm / safe zone ---
+    this.zone = null;        // { cx, cz, r, nr, dmg, closing }
+    this.zoneState = null;   // host scheduler state
+    this.zoneSendT = 0;
+    this.stormDmgAccum = 0;
+    const wallMat = new THREE.MeshBasicMaterial({
+      color: 0x9b5cff, transparent: true, opacity: 0.2, side: THREE.DoubleSide, depthWrite: false, fog: false,
+    });
+    this.stormWall = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 64, 1, true), wallMat);
+    this.stormWall.userData.noHit = this.stormWall.userData.noCam = true;
+    this.stormWall.raycast = () => {};
+    this.stormWall.visible = false;
+    this.scene.add(this.stormWall);
+
     this.keys = {};
     this._bindInput();
 
@@ -324,6 +349,8 @@ export class Game {
       ammoText: el('ammoText'), weaponName: el('weaponName'),
       reloadBar: el('reloadBar'), reloadFill: el('reloadFill'), ammoIcon: el('ammoIcon'),
       waterOverlay: el('waterOverlay'),
+      minimapWrap: el('minimapWrap'), minimap: el('minimap'), stormStatus: el('stormStatus'),
+      stormWarn: el('stormWarn'), stormVignette: el('stormVignette'),
       scoreList: el('scoreList'), aliveBadge: el('aliveBadge'),
       killfeed: el('killfeed'), hitmarker: el('hitmarker'),
       damageFlash: el('damageFlash'), scope: el('scopeOverlay'),
@@ -493,6 +520,7 @@ export class Game {
   // ===================== frame =====================
   _frame() {
     const dt = Math.min(this.clock.getDelta(), 0.05);
+    this.sprinting = false; // re-set by _movement when actually sprinting
     if (this.state === 'lobby' || this.state === 'roundover') {
       // gameplay frozen; lobby orbit camera / results banner
     } else if (this.phase === 'bus') {
@@ -527,7 +555,27 @@ export class Game {
       (this.pos.y + EYE) < WATER_LEVEL;
     if (this.ui.waterOverlay) this.ui.waterOverlay.classList.toggle('show', submerged);
 
+    // storm + minimap (battle royale only)
+    if (this.state === 'match' && this.net) {
+      if (this.net.isHost) this._zoneTick(dt);
+      this._applyStorm(dt);
+      this.minimapT = (this.minimapT || 0) - dt;
+      if (this.minimapT <= 0) { this.minimapT = 0.1; this._updateMinimap(); }
+      this.ui.minimapWrap.classList.remove('hidden');
+      this._refreshStormStatus();
+    } else {
+      this.stormWall.visible = false;
+      this.ui.minimapWrap.classList.add('hidden');
+      this.ui.stormWarn.classList.add('hidden');
+      this.ui.stormVignette.classList.remove('show');
+    }
+
     this.renderer.render(this.scene, this.camera);
+  }
+
+  _refreshStormStatus() {
+    if (!this.zone || !this.ui.stormStatus) { if (this.ui.stormStatus) this.ui.stormStatus.textContent = ''; return; }
+    this.ui.stormStatus.textContent = this.zone.closing ? '🌀 Storm closing!' : '🌀 Safe zone';
   }
 
   // free-fly spectator after elimination (battle royale)
@@ -602,6 +650,111 @@ export class Game {
 
   get gliding() { return this.phase === 'sky' && !this.grounded; }
 
+  // ===================== storm / safe zone =====================
+  // host: pick a final centre on land and start the schedule
+  _initZone() {
+    let fc = { x: 0, z: 0 };
+    for (const [x, z] of [[0, 0], [40, -40], [-22, -26], [20, 30], [-60, 40]]) {
+      if (terrainHeightAt(x, z) > WATER_LEVEL + 2) { fc = { x, z }; break; }
+    }
+    this.zoneCenter = fc;
+    this.zoneState = { idx: 0, mode: 'hold', t: 0 };
+    const p = STORM_PHASES[0];
+    this.zone = { cx: fc.x, cz: fc.z, r: p.r, nr: STORM_PHASES[1].r, dmg: p.dmg, closing: false };
+    this.zoneSendT = 0;
+  }
+
+  _zoneTick(dt) { // host only
+    const st = this.zoneState; if (!st) return;
+    const cur = STORM_PHASES[st.idx];
+    const next = STORM_PHASES[st.idx + 1];
+    st.t += dt;
+    if (st.mode === 'hold') {
+      this.zone.r = cur.r;
+      this.zone.closing = false;
+      this.zone.dmg = cur.dmg;
+      this.zone.nr = next ? next.r : cur.r;
+      if (st.t >= cur.hold && next) { st.mode = 'shrink'; st.t = 0; }
+    } else { // shrink toward next radius
+      const k = Math.min(1, st.t / cur.shrink);
+      this.zone.r = cur.r + (next.r - cur.r) * k;
+      this.zone.closing = true;
+      this.zone.dmg = cur.dmg;
+      this.zone.nr = next.r;
+      if (st.t >= cur.shrink) { st.idx++; st.mode = 'hold'; st.t = 0; }
+    }
+    this.zoneSendT -= dt;
+    if (this.net && this.zoneSendT <= 0) {
+      this.zoneSendT = 0.4;
+      this.net.send({ t: 'zone', cx: this.zone.cx, cz: this.zone.cz,
+        r: +this.zone.r.toFixed(1), nr: this.zone.nr, dmg: this.zone.dmg, closing: this.zone.closing ? 1 : 0 });
+    }
+  }
+
+  // all clients: damage self when outside the circle, update wall + warning
+  _applyStorm(dt) {
+    if (!this.zone) { this.stormWall.visible = false; return; }
+    this.stormWall.visible = true;
+    this.stormWall.position.set(this.zone.cx, 60, this.zone.cz);
+    this.stormWall.scale.set(this.zone.r, 240, this.zone.r);
+    this.stormWall.material.opacity = 0.07 + (this.zone.closing ? 0.04 : 0) + Math.sin(this.waterT * 4) * 0.015;
+
+    const outside = !this.dead && this.state === 'match' && this.phase === 'normal' &&
+      Math.hypot(this.pos.x - this.zone.cx, this.pos.z - this.zone.cz) > this.zone.r;
+    if (this.ui.stormWarn) this.ui.stormWarn.classList.toggle('hidden', !outside);
+    if (this.ui.stormVignette) this.ui.stormVignette.classList.toggle('show', outside);
+    if (outside) {
+      this.stormDmgAccum += this.zone.dmg * dt;
+      if (this.stormDmgAccum >= 1) {
+        const d = Math.floor(this.stormDmgAccum);
+        this.stormDmgAccum -= d;
+        this.hp -= d;
+        this.sinceHit = 0;
+        this.ui.damageFlash.classList.add('show');
+        setTimeout(() => this.ui.damageFlash.classList.remove('show'), 60);
+        if (this.hp <= 0) { this.hp = 0; this.lastHitBy = 'storm'; this._die(); }
+        else if (this.net) this.net.send({ t: 'hp', v: Math.round(this.hp) });
+        this._refreshHud();
+      }
+    }
+  }
+
+  _updateMinimap() {
+    const cv = this.ui.minimap; if (!cv) return;
+    const c = cv.getContext('2d');
+    const W = cv.width, H = cv.height, R = W / 2;
+    const scale = R / (ARENA * 1.02);
+    const toX = (wx) => R + wx * scale;
+    const toY = (wz) => R + wz * scale;
+    c.clearRect(0, 0, W, H);
+    // island disc
+    c.beginPath(); c.arc(R, R, R - 2, 0, 7); c.fillStyle = 'rgba(74,120,70,0.55)'; c.fill();
+    c.lineWidth = 2; c.strokeStyle = 'rgba(255,255,255,0.25)'; c.stroke();
+    if (this.zone) {
+      // storm shading outside the safe circle
+      c.save(); c.beginPath(); c.arc(R, R, R - 2, 0, 7); c.clip();
+      c.fillStyle = 'rgba(120,60,210,0.32)'; c.fillRect(0, 0, W, H);
+      c.globalCompositeOperation = 'destination-out';
+      c.beginPath(); c.arc(toX(this.zone.cx), toY(this.zone.cz), this.zone.r * scale, 0, 7); c.fill();
+      c.restore();
+      // current safe circle
+      c.beginPath(); c.arc(toX(this.zone.cx), toY(this.zone.cz), this.zone.r * scale, 0, 7);
+      c.lineWidth = 2; c.strokeStyle = '#ffffff'; c.stroke();
+      // next safe circle (dashed)
+      if (this.zone.nr < this.zone.r) {
+        c.setLineDash([4, 4]); c.beginPath();
+        c.arc(toX(this.zone.cx), toY(this.zone.cz), this.zone.nr * scale, 0, 7);
+        c.strokeStyle = '#c9a6ff'; c.stroke(); c.setLineDash([]);
+      }
+    }
+    // self arrow
+    const sx = toX(this.pos.x), sy = toY(this.pos.z);
+    c.save(); c.translate(sx, sy); c.rotate(this.yaw);
+    c.beginPath(); c.moveTo(0, -6); c.lineTo(4, 5); c.lineTo(-4, 5); c.closePath();
+    c.fillStyle = '#4fc3f7'; c.fill(); c.lineWidth = 1.2; c.strokeStyle = '#06304a'; c.stroke();
+    c.restore();
+  }
+
   // ===================== movement & physics =====================
   _movement(dt) {
     // bus keeps flying off-screen after we drop
@@ -629,14 +782,18 @@ export class Game {
     const wasSwimming = this.swimming;
     this.swimming = swimming;
 
-    const speed = this.gliding ? GLIDE_SPEED : swimming ? SWIM_SPEED : SPEED;
+    const up = this.keys['Space'];
+    const down = this.keys['ShiftLeft'] || this.keys['ShiftRight'];
+
+    // sprint: hold Shift while moving on land (Shift still dives in air/water).
+    // grounded isn't required — terrain micro-bumps would otherwise flicker it.
+    this.sprinting = !this.gliding && !swimming && down && (ix !== 0 || iz !== 0);
+    const speed = this.gliding ? GLIDE_SPEED : swimming ? SWIM_SPEED
+      : this.sprinting ? SPEED * 1.55 : SPEED;
     const fw = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     const rt = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
     this.vel.x = (fw.x * iz + rt.x * ix) * speed;
     this.vel.z = (fw.z * iz + rt.z * ix) * speed;
-
-    const up = this.keys['Space'];
-    const down = this.keys['ShiftLeft'] || this.keys['ShiftRight'];
 
     if (swimming) {
       // buoyancy floats the player to the surface; Space/Shift swim up/down
@@ -1122,10 +1279,11 @@ export class Game {
   _die() {
     this.dead = true;
     this.meAvatar.group.visible = false;
-    const killer = this.lastHitBy !== null ? this.scores.get(this.lastHitBy) : null;
+    const byStorm = this.lastHitBy === 'storm';
+    const killer = (!byStorm && this.lastHitBy !== null) ? this.scores.get(this.lastHitBy) : null;
     if (killer) killer.kills++;
     sfx.die();
-    this._feed(`☠ ${killer ? killer.name : 'Someone'} eliminated you`);
+    this._feed(byStorm ? '🌀 The storm got you' : `☠ ${killer ? killer.name : 'Someone'} eliminated you`);
     if (!this.net) {
       // practice: respawn as before
       this.respawnT = RESPAWN_TIME;
@@ -1136,7 +1294,7 @@ export class Game {
       return;
     }
     // battle royale: one life — spectate until the round ends
-    this.net.send({ t: 'die', by: this.lastHitBy });
+    this.net.send({ t: 'die', by: byStorm ? 'storm' : this.lastHitBy });
     this.scores.get(this.myId).alive = false;
     this.ui.deathSub.textContent = 'Spectating until the round ends — WASD to fly';
     this.ui.deathOverlay.classList.remove('hidden');
@@ -1210,12 +1368,14 @@ export class Game {
     this.hp = 100;
     this.dead = false;
     this.lastHitBy = null;
+    this.sinceHit = 999;
     this.ammo = WEAPONS.map(w => w.mag);
     this.reloadT = 0;
     this.mode = 'weapon';
     this.weaponIdx = 0;
     this.meAvatar.group.visible = true;
     this.vel.set(0, 0, 0);
+    if (this.net.isHost) this._initZone(); // host drives the storm; guests get it over the wire
     this.phase = 'bus';
     this.busT = 0;
     this.busBob = 0;
@@ -1270,6 +1430,7 @@ export class Game {
     this.busT = 0;
     this.bus.visible = false;
     sfx.busStop();
+    this.zone = null; this.zoneState = null; this.stormWall.visible = false;
     this.builds.clearAll();
     for (const s of this.scores.values()) { s.alive = false; s.kills = 0; }
     for (const p of this.players.values()) {
@@ -1354,7 +1515,8 @@ export class Game {
       return;
     }
     const w = WEAPONS[this.weaponIdx];
-    const targetFov = (this.ads && this.mode === 'weapon' && this.phase === 'normal') ? w.zoom : 75;
+    const targetFov = (this.ads && this.mode === 'weapon' && this.phase === 'normal')
+      ? w.zoom : (this.sprinting ? 83 : 75);
     this.camera.fov += (targetFov - this.camera.fov) * Math.min(1, dt * 12);
     this.camera.updateProjectionMatrix();
 
@@ -1488,6 +1650,7 @@ export class Game {
           this.yaw = 0;
           this.pitch = -0.45;
           this.builds.loadSnapshot(m.builds);
+          if (m.zone) this.zone = m.zone;
           this.ui.lobby.classList.add('hidden');
           this.ui.lockOverlay.classList.remove('hidden');
           this._feed('Round in progress — you join the next one');
@@ -1549,10 +1712,12 @@ export class Game {
         p.avatar.group.visible = false;
         const s = this.scores.get(from);
         if (s) s.alive = false;
-        const killer = m.by !== null && m.by !== undefined ? this.scores.get(m.by) : null;
+        const byStorm = m.by === 'storm';
+        const killer = (!byStorm && m.by !== null && m.by !== undefined) ? this.scores.get(m.by) : null;
         if (killer) killer.kills++;
         if (m.by === this.myId) { sfx.kill(); }
-        this._feed(`⚔ ${killer ? killer.name : 'Someone'} eliminated ${p.name}`);
+        this._feed(byStorm ? `🌀 ${p.name} was lost to the storm`
+          : `⚔ ${killer ? killer.name : 'Someone'} eliminated ${p.name}`);
         this._refreshScores();
         this._checkRound();
         break;
@@ -1565,6 +1730,11 @@ export class Game {
         break;
       case 'edit':
         if (this.builds.applyEdit(m.k, m.e)) sfx.build();
+        break;
+      case 'zone': // guests receive the storm state from the host
+        if (!this.net.isHost) {
+          this.zone = { cx: m.cx, cz: m.cz, r: m.r, nr: m.nr, dmg: m.dmg, closing: !!m.closing };
+        }
         break;
     }
   }

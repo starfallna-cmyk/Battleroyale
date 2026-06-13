@@ -122,21 +122,22 @@ function wallRun(b, axis, fixed, a0, a1, h, color, gap, opts = {}) {
 // short stoop of steps just outside a doorway so you can climb in from lower
 // ground (each step ≤ player step-up height). Buried/flush on level ground.
 function doorSteps(b, door, w, d) {
-  const sh = 0.42, depth = 0.75, n = 3;
+  const sh = 0.38, depth = 0.5, n = 3, sw = DOOR_W + 0.4, col = 0x8a8178;
   for (let i = 1; i <= n; i++) {
-    const top = -i * sh;                 // descending below the flat floor (local 0)
-    const sw = DOOR_W + 0.7;
-    if (door === 'south') b.box(sw, 3, depth, 0, top - 3, d / 2 + (i - 0.5) * depth, 0x8a7560, { rough: 0.9 });
-    else if (door === 'north') b.box(sw, 3, depth, 0, top - 3, -d / 2 - (i - 0.5) * depth, 0x8a7560, { rough: 0.9 });
-    else if (door === 'east') b.box(depth, 3, sw, w / 2 + (i - 0.5) * depth, top - 3, 0, 0x8a7560, { rough: 0.9 });
-    else b.box(depth, 3, sw, -w / 2 - (i - 0.5) * depth, top - 3, 0, 0x8a7560, { rough: 0.9 });
+    const top = -i * sh;          // descending below the flat floor (local 0)
+    const off = (i - 0.5) * depth; // each step reaches a little further out
+    if (door === 'south') b.box(sw, 2, depth, 0, top - 2, d / 2 + off, col, { rough: 0.9 });
+    else if (door === 'north') b.box(sw, 2, depth, 0, top - 2, -d / 2 - off, col, { rough: 0.9 });
+    else if (door === 'east') b.box(depth, 2, sw, w / 2 + off, top - 2, 0, col, { rough: 0.9 });
+    else b.box(depth, 2, sw, -w / 2 - off, top - 2, 0, col, { rough: 0.9 });
   }
 }
 
 // Hollow rectangular room: solid flat foundation (terrain never pokes through),
 // 4 walls with a doorway, a door stoop, and windows.
 function room(b, o) {
-  const { w, d, h, wall, floor = 0x6a5440, door = 'south', windows = true } = o;
+  const { w, d, h, wall, floor = 0x8a8178, windows = true } = o;
+  const door = o.door || b.doorSide || 'south'; // uphill side unless the type forces one
   const x0 = -w / 2, x1 = w / 2, z0 = -d / 2, z1 = d / 2;
   const wopt = { rough: 0.88 };
 
@@ -398,46 +399,59 @@ const SETTLEMENTS = [
     { fn: cottage, ox: -8, oz: -6 }, { fn: cottage, ox: 7, oz: 7 }, { fn: storehouse, ox: 9, oz: -7 } ] },
 ];
 
-export function buildBuildings(scene, staticMeshes, grid, ctx) {
-  const { heightAt, slopeAt, WATER_LEVEL, HALF } = ctx;
+const SPREAD = 1.7; // spacing multiplier on settlement offsets (kills overlapping "double" houses)
 
-  const place = (worldX, worldZ, fn, args = []) => {
-    // sample footprint corners: build floor at the HIGHEST so terrain never pokes
-    // through it; the solid foundation pad fills down to below the LOWEST
+// footprints (world x,z + radius) are filled in here so vegetation can avoid them
+export function buildBuildings(scene, staticMeshes, grid, ctx, footprints = []) {
+  const { heightAt, slopeAt, WATER_LEVEL, HALF } = ctx;
+  const placedCenters = [];
+
+  const place = (worldX, worldZ, fn, args = [], minGap = 7) => {
+    // skip if it would overlap an already-placed building (no more double houses)
+    for (const c of placedCenters) {
+      if (Math.hypot(worldX - c.x, worldZ - c.z) < Math.max(minGap, c.gap)) return;
+    }
+    // sample footprint corners: floor at the HIGHEST so terrain never pokes through;
+    // foundation pad fills down past the LOWEST
     const sr = 5;
-    const hs = [
-      heightAt(worldX, worldZ),
-      heightAt(worldX + sr, worldZ), heightAt(worldX - sr, worldZ),
-      heightAt(worldX, worldZ + sr), heightAt(worldX, worldZ - sr),
-      heightAt(worldX + sr, worldZ + sr), heightAt(worldX - sr, worldZ - sr),
-    ];
+    const hs = [];
+    for (const [ox, oz] of [[0, 0], [sr, 0], [-sr, 0], [0, sr], [0, -sr], [sr, sr], [-sr, -sr]]) {
+      hs.push(heightAt(worldX + ox, worldZ + oz));
+    }
     const cmin = Math.min(...hs), cmax = Math.max(...hs);
     const baseY = Math.max(cmax, WATER_LEVEL + 0.5);
     const b = makeBuilder(scene, staticMeshes, grid, worldX, baseY, worldZ);
-    b.padDepth = (baseY - cmin) + 0.6; // foundation reaches below the seabed/low corner
+    b.padDepth = (baseY - cmin) + 0.6;
+    // face the doorway uphill (toward the highest neighbour) so the entry stoop
+    // stays small instead of becoming a tall staircase on the downhill side
+    const dirs = [['south', heightAt(worldX, worldZ + sr)], ['north', heightAt(worldX, worldZ - sr)],
+      ['east', heightAt(worldX + sr, worldZ)], ['west', heightAt(worldX - sr, worldZ)]];
+    dirs.sort((a, c) => c[1] - a[1]);
+    b.doorSide = dirs[0][0];
     fn(b, ...args);
+    placedCenters.push({ x: worldX, z: worldZ, gap: minGap });
+    footprints.push({ x: worldX, z: worldZ, r: 9 });
   };
 
   for (const s of SETTLEMENTS) {
     for (const item of s.items) {
-      // each building is levelled to ITS OWN terrain height (fixes floating/sinking)
-      place(s.x + (item.ox || 0), s.z + (item.oz || 0), item.fn, item.args);
+      place(s.x + (item.ox || 0) * SPREAD, s.z + (item.oz || 0) * SPREAD, item.fn, item.args);
     }
   }
 
-  // scattered cottages across the island
+  // scattered cottages across the island (gentle ground only)
   let seed = 4242;
   const rand = () => { seed = (seed * 16807 + 1) % 2147483647; return (seed - 1) / 2147483646; };
   const palette = [[0xd4b896, 0x8b3a2a], [0xc8b090, 0x6a3020], [0xe0d0b0, 0x5a2818], [0xb8a888, 0x7a4020]];
   let placed = 0;
-  for (let tries = 0; tries < 600 && placed < 26; tries++) {
+  for (let tries = 0; tries < 700 && placed < 22; tries++) {
     const x = (rand() * 2 - 1) * HALF * 0.8;
     const z = (rand() * 2 - 1) * HALF * 0.8;
     const y = heightAt(x, z);
-    if (y < WATER_LEVEL + 1.5 || y > 28 || slopeAt(x, z) > 0.28) continue;
-    if (SETTLEMENTS.some((s) => Math.hypot(x - s.x, z - s.z) < 34)) continue;
+    if (y < WATER_LEVEL + 1.5 || y > 26 || slopeAt(x, z, 5) > 0.18) continue; // flatter spots only
+    if (SETTLEMENTS.some((s) => Math.hypot(x - s.x, z - s.z) < 42)) continue;
     const [c, r] = palette[placed % palette.length];
-    place(x, z, cottage, [c, r]);
+    place(x, z, cottage, [c, r], 16);
     placed++;
   }
 }

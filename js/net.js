@@ -6,7 +6,7 @@ const PREFIX = 'ovob1v1-';
 export const MAX_PLAYERS = 6;
 
 // bump when messages change shape — mismatched clients get a clear error
-export const PROTO = 8;
+export const PROTO = 9;
 
 // TURN relay (metered.ca) makes connections work across any router/firewall.
 // Credentials are fetched fresh per session; on failure we fall back to

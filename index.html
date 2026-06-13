@@ -40,9 +40,9 @@
       <div id="menuStatus" class="menu-status"></div>
 
       <div class="controls-help">
-        <div><b>WASD</b> move &middot; <b>SPACE</b> jump / drop from bus &middot; <b>LMB</b> shoot / place &middot; <b>RMB</b> aim &middot; <b>WHEEL</b> cycle</div>
-        <div><b>1 2 3</b> weapons &middot; <b>4</b> pickaxe &middot; <b>Z</b> wall &middot; <b>X</b> floor &middot; <b>C</b> ramp &middot; <b>F</b> edit build &middot; <b>R</b> reload</div>
-        <div>Up to <b>6 players</b> per room — friends can join mid-match</div>
+        <div><b>WASD</b> move &middot; <b>SHIFT</b> sprint &middot; <b>SPACE</b> jump / drop / swim up &middot; <b>LMB</b> shoot / place &middot; <b>RMB</b> aim</div>
+        <div><b>1 2 3</b> weapons &middot; <b>4</b> pickaxe &middot; <b>Z</b> wall &middot; <b>X</b> floor &middot; <b>C</b> ramp &middot; <b>F</b> edit &middot; <b>R</b> reload &middot; <b>WHEEL</b> cycle</div>
+        <div>Up to <b>6 players</b> &middot; a closing storm forces the fight to an end</div>
       </div>
     </div>
   </div>
@@ -53,10 +53,16 @@
     <div id="hitmarker">✕</div>
     <div id="damageFlash"></div>
     <div id="waterOverlay"></div>
+    <div id="stormVignette"></div>
     <div id="scopeOverlay" class="hidden"></div>
 
     <div id="scoreList"></div>
-    <div id="aliveBadge" class="hidden">👥 0 ALIVE</div>
+    <div id="minimapWrap" class="hidden">
+      <canvas id="minimap" width="170" height="170"></canvas>
+      <div id="aliveBadge">👥 0 ALIVE</div>
+      <div id="stormStatus"></div>
+    </div>
+    <div id="stormWarn" class="hidden">⚡ GET TO THE ZONE</div>
     <div id="prompt" class="hidden"></div>
 
     <div id="roomBadge" class="hidden"></div>

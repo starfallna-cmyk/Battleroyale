@@ -276,8 +276,9 @@ function scatterInstances(scene, count, geo, mat, placeFn, opts) {
   return scatterFromPlacements(scene, gatherPlacements(count, placeFn), geo, mat, opts);
 }
 
-function buildVegetation(scene, staticMeshes, grid) {
+function buildVegetation(scene, staticMeshes, grid, footprints = []) {
   // (grass-tuft and flower cone scatter removed — they read as litter on the ground)
+  const inBuilding = (x, z) => footprints.some((f) => Math.hypot(x - f.x, z - f.z) < f.r);
 
   // oak trees — trunks block movement & shots; canopies block shots only
   const trunkGeo = new THREE.CylinderGeometry(0.35, 0.55, 5.5, 8);
@@ -295,6 +296,7 @@ function buildVegetation(scene, staticMeshes, grid) {
     const z = (Math.random() * 2 - 1) * HALF * 0.88;
     const y = heightAt(x, z);
     if (y < WATER_LEVEL + 1.5 || y > 35 || slopeAt(x, z) > 0.35) return null;
+    if (inBuilding(x, z)) return null; // keep trees out of settlements
     return { x, y, z, ry: Math.random() * Math.PI * 2, s: 0.85 + Math.random() * 0.7 };
   };
   const oaks = gatherPlacements(620, treePlace);
@@ -323,6 +325,7 @@ function buildVegetation(scene, staticMeshes, grid) {
     const z = (Math.random() * 2 - 1) * HALF * 0.85;
     const y = heightAt(x, z);
     if (y < 12 || y > 48 || slopeAt(x, z) > 0.5) return null;
+    if (inBuilding(x, z)) return null;
     return { x, y, z, ry: Math.random() * 6, s: 0.9 + Math.random() * 0.8 };
   };
   const pines = gatherPlacements(320, pinePlace);
@@ -439,9 +442,11 @@ export function buildMap(scene) {
 
   const terrain = buildTerrain(scene);
   const water = buildWater(scene);
-  buildVegetation(scene, staticMeshes, grid);
+  // buildings first so they register footprints; vegetation then avoids them
+  const footprints = [];
+  buildBuildings(scene, staticMeshes, grid, { heightAt, slopeAt, WATER_LEVEL, HALF }, footprints);
+  buildVegetation(scene, staticMeshes, grid, footprints);
   buildPOIs(scene, staticMeshes, grid);
-  buildBuildings(scene, staticMeshes, grid, { heightAt, slopeAt, WATER_LEVEL, HALF });
 
   return {
     groundMesh: terrain,
