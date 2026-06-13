@@ -3,7 +3,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { BuildSystem, BUILD_TYPES } from './builds.js';
 import { WEAPONS, damageAt } from './weapons.js';
 import { Avatar, makeNameLabel } from './avatar.js';
-import { buildMap, ARENA, SPAWNS } from './map.js';
+import { buildMap, ARENA, SPAWNS, terrainHeightAt, WATER_LEVEL, updateWater } from './map.js';
 import { PROTO } from './net.js';
 import { sfx } from './sfx.js';
 
@@ -12,21 +12,21 @@ const GRAVITY = 26;
 const SPEED = 6.8;
 const JUMP_V = 9.8;
 const PAD_V = 16;
-const GLIDE_FALL = 5.5;   // capped fall speed under the glider
-const DIVE_FALL = 20;     // holding Shift
-const GLIDE_SPEED = 9.5;  // horizontal speed while skydiving
+const GLIDE_FALL = 8;     // capped fall speed under the glider
+const DIVE_FALL = 26;     // holding Shift
+const GLIDE_SPEED = 11;   // horizontal speed while skydiving
+const SWIM_SPEED = 4.6;   // horizontal speed while swimming
 const P_HALF = 0.45;
 const P_HEIGHT = 1.8;
 const EYE = 1.55;
 const RESPAWN_TIME = 3;
-const WIN_KILLS = 10;
 const NET_RATE = 0.045;
 const TURBO_BUILD = 0.12;
-const BUS_TIME = 11;      // seconds for the bus to cross the map
+const BUS_TIME = 15;      // seconds for the bus to cross the island
 
 const COLORS = [0x4fc3f7, 0xff7043, 0x9ccc65, 0xffd54f, 0xba68c8, 0x4dd0e1];
-const BUS_FROM = new THREE.Vector3(-95, 42, -55);
-const BUS_TO = new THREE.Vector3(95, 42, 55);
+const BUS_FROM = new THREE.Vector3(-360, 150, -220);
+const BUS_TO = new THREE.Vector3(360, 150, 220);
 
 function el(id) { return document.getElementById(id); }
 
@@ -179,10 +179,14 @@ export class Game {
     });
 
     const world = buildMap(this.scene);
-    this.solids = world.solids;
-    this.staticMeshes = world.staticMeshes;
+    this.grid = world.grid;            // spatial index of static collision AABBs
+    this.staticMeshes = world.staticMeshes.filter(Boolean);
     this.pads = world.pads;
-    this.groundMesh = world.groundMesh;
+    this.groundMesh = world.groundMesh; // terrain (shot target; not a camera blocker)
+    this.water = world.water;
+    this.sun = this.scene.userData.sun;
+    this.swimming = false;
+    this.lobbyAnchor = { x: SPAWNS[0].pos[0], y: SPAWNS[0].pos[1], z: SPAWNS[0].pos[2] };
 
     this.builds = new BuildSystem(this.scene);
 
@@ -243,9 +247,11 @@ export class Game {
     // --- practice dummies ---
     this.dummies = [];
     if (!net) {
-      for (const [x, z] of [[-10, -14], [0, -18], [12, -20]]) {
+      const sx = this.lobbyAnchor.x, sz = this.lobbyAnchor.z;
+      for (const [ox, oz] of [[-6, -8], [0, -11], [7, -9]]) {
+        const x = sx + ox, z = sz + oz;
         const avatar = new Avatar(0xb39ddb);
-        avatar.group.position.set(x, 0, z);
+        avatar.group.position.set(x, terrainHeightAt(x, z), z);
         avatar.update(0, { item: 4 });
         const d = { avatar, group: avatar.group, hp: 100, alive: true, respawnT: 0, hpBar: makeHpBar() };
         avatar.group.add(d.hpBar.sprite);
@@ -311,6 +317,7 @@ export class Game {
       hpFill: el('hpFill'), hpText: el('hpText'),
       ammoText: el('ammoText'), weaponName: el('weaponName'),
       reloadBar: el('reloadBar'), reloadFill: el('reloadFill'), ammoIcon: el('ammoIcon'),
+      waterOverlay: el('waterOverlay'),
       scoreList: el('scoreList'), aliveBadge: el('aliveBadge'),
       killfeed: el('killfeed'), hitmarker: el('hitmarker'),
       damageFlash: el('damageFlash'), scope: el('scopeOverlay'),
@@ -498,6 +505,22 @@ export class Game {
     this.builds.update(dt);
     this._netTick(dt);
     this._updatePrompt();
+
+    // animate water + keep the shadow box centered on the action
+    this.waterT = (this.waterT || 0) + dt;
+    updateWater(this.water, this.waterT);
+    if (this.sun) {
+      const f = this.state === 'lobby' ? this.lobbyAnchor : this.pos;
+      this.sun.position.set(f.x + 120, f.y + 200, f.z - 100);
+      this.sun.target.position.set(f.x, f.y, f.z);
+      this.sun.target.updateMatrixWorld();
+    }
+
+    // underwater tint when the eye dips below the surface
+    const submerged = !this.dead && this.state === 'match' &&
+      (this.pos.y + EYE) < WATER_LEVEL;
+    if (this.ui.waterOverlay) this.ui.waterOverlay.classList.toggle('show', submerged);
+
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -519,7 +542,7 @@ export class Game {
     if (this.keys['ShiftLeft'] || this.keys['ShiftRight']) this.pos.y -= sp * dt;
     this.pos.x = Math.max(-ARENA, Math.min(ARENA, this.pos.x));
     this.pos.z = Math.max(-ARENA, Math.min(ARENA, this.pos.z));
-    this.pos.y = Math.max(1, Math.min(70, this.pos.y));
+    this.pos.y = Math.max(terrainHeightAt(this.pos.x, this.pos.z) + 2, Math.min(200, this.pos.y));
   }
 
   _updatePrompt() {
@@ -593,20 +616,37 @@ export class Game {
     const len = Math.hypot(ix, iz) || 1;
     ix /= len; iz /= len;
 
-    const speed = this.gliding ? GLIDE_SPEED : SPEED;
+    // is the player in deep enough water to swim?
+    const groundY = terrainHeightAt(this.pos.x, this.pos.z);
+    const swimming = !this.gliding && this.pos.y < WATER_LEVEL && (WATER_LEVEL - groundY) > 1.3;
+    if (swimming && this.phase === 'sky') this.phase = 'normal';
+    const wasSwimming = this.swimming;
+    this.swimming = swimming;
+
+    const speed = this.gliding ? GLIDE_SPEED : swimming ? SWIM_SPEED : SPEED;
     const fw = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     const rt = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
     this.vel.x = (fw.x * iz + rt.x * ix) * speed;
     this.vel.z = (fw.z * iz + rt.z * ix) * speed;
 
-    if (this.keys['Space'] && this.grounded) {
-      this.vel.y = JUMP_V;
-      this.grounded = false;
-    }
-    this.vel.y -= GRAVITY * dt;
-    if (this.gliding) {
-      const cap = (this.keys['ShiftLeft'] || this.keys['ShiftRight']) ? DIVE_FALL : GLIDE_FALL;
-      if (this.vel.y < -cap) this.vel.y = -cap;
+    const up = this.keys['Space'];
+    const down = this.keys['ShiftLeft'] || this.keys['ShiftRight'];
+
+    if (swimming) {
+      // buoyancy floats the player to the surface; Space/Shift swim up/down
+      const targetY = WATER_LEVEL - 0.9;
+      this.vel.y += (targetY - this.pos.y) * 3.2 * dt;
+      if (up) this.vel.y += 14 * dt;
+      if (down) this.vel.y -= 12 * dt;
+      this.vel.y *= 1 - Math.min(1, 3.5 * dt);
+      this.vel.y = Math.max(-7, Math.min(7, this.vel.y));
+    } else {
+      if (up && this.grounded) { this.vel.y = JUMP_V; this.grounded = false; }
+      this.vel.y -= GRAVITY * dt;
+      if (this.gliding) {
+        const cap = down ? DIVE_FALL : GLIDE_FALL;
+        if (this.vel.y < -cap) this.vel.y = -cap;
+      }
     }
 
     const boxes = this._nearbyBoxes();
@@ -621,7 +661,16 @@ export class Game {
     const prevY = this.pos.y;
     this.pos.y += this.vel.y * dt;
     this.grounded = false;
-    if (this.pos.y <= 0) { this.pos.y = 0; this.vel.y = 0; this.grounded = true; }
+
+    // terrain floor (heightmap)
+    const gy = terrainHeightAt(this.pos.x, this.pos.z);
+    if (this.pos.y <= gy) {
+      this.pos.y = gy;
+      this.vel.y = 0;
+      if (!swimming) this.grounded = true;
+    }
+
+    // building / prop / build-piece box landing + head-bump
     for (const b of boxes) {
       if (!this._overlapsXZ(b)) continue;
       const top = b.max.y, bottom = b.min.y;
@@ -643,7 +692,8 @@ export class Game {
 
     if (this.grounded && this.phase === 'sky') this.phase = 'normal';
 
-    // landing thud + footsteps
+    // splash / landing thud + footsteps
+    if (swimming && !wasSwimming && fallV < -6) sfx.land();
     if (!wasGrounded && this.grounded && fallV < -10) {
       sfx.land();
       this.gunKick = Math.min(0.25, this.gunKick + 0.12);
@@ -656,26 +706,14 @@ export class Game {
       }
     }
 
-    if (this.grounded) {
-      for (const p of this.pads) {
-        if (Math.abs(this.pos.y - (p.y || 0)) > 0.5) continue;
-        const dx = this.pos.x - p.x, dz = this.pos.z - p.z;
-        if (dx * dx + dz * dz < 1.7 * 1.7) {
-          this.vel.y = PAD_V;
-          this.grounded = false;
-          sfx.pad();
-          break;
-        }
-      }
-    }
-
-    this.pos.x = Math.max(-ARENA + P_HALF, Math.min(ARENA - P_HALF, this.pos.x));
-    this.pos.z = Math.max(-ARENA + P_HALF, Math.min(ARENA - P_HALF, this.pos.z));
+    const lim = ARENA - 2;
+    this.pos.x = Math.max(-lim, Math.min(lim, this.pos.x));
+    this.pos.z = Math.max(-lim, Math.min(lim, this.pos.z));
   }
 
   _nearbyBoxes() {
     const out = [];
-    for (const b of this.solids) out.push(b);
+    this.grid.query(this.pos.x, this.pos.z, out);
     for (const rec of this.builds.map.values()) {
       for (const b of rec.boxes) {
         if (b.distanceToPoint(this.pos) < 6) out.push(b);
@@ -697,7 +735,7 @@ export class Game {
     for (const b of boxes) {
       if (!this._overlapsXZ(b) || !this._overlapsY(b)) continue;
       const stepUp = b.max.y - this.pos.y;
-      if (stepUp > 0 && stepUp <= 0.55 && this.vel.y <= 0.01) {
+      if (stepUp > 0 && stepUp <= 0.7 && this.vel.y <= 0.01) {
         this.pos.y = b.max.y;
         this.grounded = true;
         continue;
@@ -1100,7 +1138,7 @@ export class Game {
 
   _respawn() {
     const spawn = SPAWNS[this.myId % SPAWNS.length];
-    this.pos.set(spawn.pos[0], 45, spawn.pos[2]);
+    this.pos.set(spawn.pos[0], 165, spawn.pos[2]);
     this.vel.set(0, -2, 0);
     this.yaw = spawn.yaw;
     this.pitch = 0;
@@ -1261,14 +1299,37 @@ export class Game {
       : allReady ? 'Starting…' : 'Round starts when everyone is ready';
   }
 
+  // nearest hit distance of a ray vs the nearby static + build AABBs (slab method)
+  _rayBlockDist(origin, dir, maxDist) {
+    const boxes = this._nearbyBoxes();
+    let best = maxDist;
+    for (const b of boxes) {
+      let tmin = 0, tmax = maxDist, ok = true;
+      for (const ax of ['x', 'y', 'z']) {
+        const o = origin[ax], d = dir[ax];
+        const lo = b.min[ax], hi = b.max[ax];
+        if (Math.abs(d) < 1e-8) { if (o < lo || o > hi) { ok = false; break; } }
+        else {
+          let t1 = (lo - o) / d, t2 = (hi - o) / d;
+          if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+          tmin = Math.max(tmin, t1); tmax = Math.min(tmax, t2);
+          if (tmin > tmax) { ok = false; break; }
+        }
+      }
+      if (ok && tmin >= 0 && tmin < best) best = tmin;
+    }
+    return best;
+  }
+
   // ===================== camera & avatars =====================
   _updateCamera(dt) {
     if (this.state === 'lobby') {
-      // slow cinematic orbit around the podium
+      // slow cinematic orbit around the staging point on the island
       this.lobbyAngle += dt * 0.12;
       const a = this.lobbyAngle;
-      this.camera.position.set(Math.sin(a) * 13, 5.5, 13 * Math.cos(a));
-      this.camera.lookAt(0, 3, 1);
+      const A = this.lobbyAnchor;
+      this.camera.position.set(A.x + Math.sin(a) * 13, A.y + 5.5, A.z + 13 * Math.cos(a));
+      this.camera.lookAt(A.x, A.y + 3, A.z + 1);
       this.camera.fov += (60 - this.camera.fov) * Math.min(1, dt * 5);
       this.camera.updateProjectionMatrix();
       return;
@@ -1295,28 +1356,28 @@ export class Game {
       : (this.ads && this.mode === 'weapon' && !w.melee) ? 2.3 : 3.6;
     this.camDist += (wantDist - this.camDist) * Math.min(1, dt * 10);
 
-    let dist = this.camDist;
-    this.raycaster.set(pivot, look.clone().negate());
-    this.raycaster.far = dist;
-    const blockers = [...this.builds.group.children, ...this.staticMeshes, this.groundMesh];
-    const hits = this.raycaster.intersectObjects(blockers, true);
-    for (const h of hits) {
-      if (h.object.userData.noHit || h.object.userData.noCam) continue;
-      dist = Math.max(0.4, h.distance - 0.25);
-      break;
-    }
+    // keep the camera out of walls (AABB raycast) — cheap vs. mesh raycasting
+    const back = look.clone().negate();
+    const hitT = this._rayBlockDist(pivot, back, this.camDist + 0.3);
+    let dist = Math.min(this.camDist, Math.max(0.4, hitT - 0.3));
 
     this.camera.position.copy(pivot).addScaledVector(look, -dist).add(new THREE.Vector3(0, 0.18, 0));
+    // never let the camera sink under the terrain or below the water surface line
+    const camGround = terrainHeightAt(this.camera.position.x, this.camera.position.z) + 0.4;
+    if (this.camera.position.y < camGround) this.camera.position.y = camGround;
   }
 
   _updateAvatars(dt) {
     if (this.state === 'lobby') {
-      // line everyone up on the center platform
+      // line everyone up on the island staging point, feet on the terrain
+      const A = this.lobbyAnchor;
       const ids = [this.myId, ...this.players.keys()].sort((a, b) => a - b);
       ids.forEach((id, i) => {
         const av = id === this.myId ? this.meAvatar : this.players.get(id).avatar;
         av.group.visible = true;
-        av.group.position.set((i - (ids.length - 1) / 2) * 1.7, 1.5, 2);
+        const px = A.x + (i - (ids.length - 1) / 2) * 1.7;
+        const pz = A.z + 1;
+        av.group.position.set(px, terrainHeightAt(px, pz), pz);
         av.group.rotation.y = 0;
         av.update(dt, { speed: 0, grounded: true, pitch: 0, item: 0 });
       });

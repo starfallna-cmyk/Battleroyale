@@ -114,6 +114,17 @@ canvas { display: block; }
 }
 #damageFlash.show { opacity: 1; transition: opacity 0s; }
 
+#waterOverlay {
+  position: absolute; inset: 0; opacity: 0; pointer-events: none;
+  background: linear-gradient(rgba(20,90,120,.45), rgba(10,60,90,.62));
+  transition: opacity .25s;
+}
+#waterOverlay.show { opacity: 1; }
+#waterOverlay::after {
+  content: ''; position: absolute; inset: 0;
+  box-shadow: inset 0 0 220px rgba(0, 30, 50, .8);
+}
+
 #scopeOverlay {
   position: absolute; inset: 0;
   background: radial-gradient(circle at center, transparent 28%, rgba(0,0,0,.92) 30%);

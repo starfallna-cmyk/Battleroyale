@@ -1,6 +1,6 @@
 # 🎯 KILLSHOT — Build & Shoot Battle Royale
 
-A browser-based third-person build-fight battle royale. Drop from the battle bus, build and edit structures, and out-gun **up to 6 players** online — no server or account needed.
+A browser-based third-person build-fight battle royale set on a huge **840m lush tropical island** — rolling forests, a central lake, mountain peaks, beaches, and 15+ explorable villages. Drop from the battle bus, build and edit structures, swim the waterways, enter every building, and out-gun **up to 6 players** online — no server or account needed.
 
 ## 🎮 Play
 
@@ -19,8 +19,8 @@ Online matches are **battle royale**: everyone waits in the lobby and **readies 
 | Key | Action |
 |---|---|
 | `W A S D` | Move |
-| `Space` | Jump / drop from the bus |
-| `Shift` | Dive while gliding |
+| `Space` | Jump / drop from the bus / swim up |
+| `Shift` | Dive while gliding / swim down |
 | `Mouse` | Look |
 | `Mouse wheel` | Cycle weapons / build pieces |
 | `Left click` | Shoot / swing / place build |
@@ -34,6 +34,8 @@ Online matches are **battle royale**: everyone waits in the lobby and **readies 
 | `Esc` | Release mouse |
 
 Builds snap to a grid, have HP, and can be shot down. Hold left click in build mode to turbo-build; look up while building to place a level higher. Press `F` on a wall to toggle a window into it, or on a ramp to flip its direction. Headshots deal bonus damage, rifles lose damage at long range, and the sniper only one-shots on a headshot.
+
+**The island:** terrain is a real heightmap you walk and fight across — climb hills, take cover in forests, hold the high ground. Deep water lets you **swim** (buoyancy floats you to the surface; `Space`/`Shift` to surface or dive, screen tints underwater). **Every building is enterable** through its doorway, and waterfront settlements sit on stilt decks over the water.
 
 ## 🔌 Connection troubleshooting
 
