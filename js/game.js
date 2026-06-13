@@ -16,6 +16,8 @@ const GLIDE_FALL = 8;     // capped fall speed under the glider
 const DIVE_FALL = 26;     // holding Shift
 const GLIDE_SPEED = 11;   // horizontal speed while skydiving
 const SWIM_SPEED = 4.6;   // horizontal speed while swimming
+const REGEN_DELAY = 5;    // seconds out of combat before health regenerates
+const REGEN_RATE = 7;     // HP per second
 const P_HALF = 0.45;
 const P_HEIGHT = 1.8;
 const EYE = 1.55;
@@ -169,7 +171,9 @@ export class Game {
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 
-    this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 600);
+    // far reaches the sky dome / distant mountains; near raised to 0.3 so the
+    // wide depth range over the 840m island doesn't z-fight on close geometry
+    this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.3, 2400);
     this.camera.rotation.order = 'YXZ';
 
     window.addEventListener('resize', () => {
@@ -277,6 +281,8 @@ export class Game {
     this.tracers = [];
     this.dmgTexts = [];
     this.netT = 0;
+    this.sinceHit = 999;   // seconds since last damage (for health regen)
+    this.regenNetT = 0;
 
     this.flashLight = new THREE.PointLight(0xffc66e, 0, 10);
     this.scene.add(this.flashLight);
@@ -768,6 +774,18 @@ export class Game {
       this._refreshHud();
     }
 
+    // slow health regen once you've been out of combat for a few seconds
+    this.sinceHit += dt;
+    if (this.phase === 'normal' && this.hp < 100 && this.sinceHit > REGEN_DELAY) {
+      this.hp = Math.min(100, this.hp + REGEN_RATE * dt);
+      this._refreshHud();
+      this.regenNetT -= dt;
+      if (this.net && this.regenNetT <= 0) {
+        this.regenNetT = 0.5;
+        this.net.send({ t: 'hp', v: Math.round(this.hp) });
+      }
+    }
+
     if (this.phase !== 'normal') {
       this.builds.hideGhosts();
       return;
@@ -1089,6 +1107,7 @@ export class Game {
     if (this.dead || this.over || this.phase === 'bus' || this.state !== 'match') return;
     this.hp -= dmg;
     this.lastHitBy = fromId;
+    this.sinceHit = 0; // restart the regen delay
     sfx.hurt();
     this.ui.damageFlash.classList.add('show');
     setTimeout(() => this.ui.damageFlash.classList.remove('show'), 60);

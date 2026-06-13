@@ -77,9 +77,11 @@ function makeBuilder(scene, staticMeshes, grid, wx, wy, wz) {
       return b.prop(w, 0.3, d, 0, baseY, 0, color, { noCam: true });
     },
     floor(w, d, color) {
-      // visual-only so the doorway threshold stays flush with the terrain you
-      // walk in on — players stand on the continuous ground inside.
-      b.prop(w, 0.25, d, 0, -0.12, 0, color, { rough: 0.95 });
+      // solid flat foundation: top at local 0 (the build base, set to the highest
+      // footprint corner) filled down past the lowest corner — gives a flat
+      // interior that terrain can never poke through, and no floating on slopes.
+      const padH = Math.max(0.5, b.padDepth || 0.5);
+      b.box(w, padH, d, 0, -padH, 0, color, { rough: 0.92 });
     },
     glass(w, h, lx, ly, lz, axis) {
       const geo = axis === 'z' ? new THREE.BoxGeometry(0.05, h, w) : new THREE.BoxGeometry(w, h, 0.05);
@@ -117,25 +119,39 @@ function wallRun(b, axis, fixed, a0, a1, h, color, gap, opts = {}) {
   }
 }
 
-// Hollow rectangular room: 4 walls (door gap on one side), floor, windows.
+// short stoop of steps just outside a doorway so you can climb in from lower
+// ground (each step ≤ player step-up height). Buried/flush on level ground.
+function doorSteps(b, door, w, d) {
+  const sh = 0.42, depth = 0.75, n = 3;
+  for (let i = 1; i <= n; i++) {
+    const top = -i * sh;                 // descending below the flat floor (local 0)
+    const sw = DOOR_W + 0.7;
+    if (door === 'south') b.box(sw, 3, depth, 0, top - 3, d / 2 + (i - 0.5) * depth, 0x8a7560, { rough: 0.9 });
+    else if (door === 'north') b.box(sw, 3, depth, 0, top - 3, -d / 2 - (i - 0.5) * depth, 0x8a7560, { rough: 0.9 });
+    else if (door === 'east') b.box(depth, 3, sw, w / 2 + (i - 0.5) * depth, top - 3, 0, 0x8a7560, { rough: 0.9 });
+    else b.box(depth, 3, sw, -w / 2 - (i - 0.5) * depth, top - 3, 0, 0x8a7560, { rough: 0.9 });
+  }
+}
+
+// Hollow rectangular room: solid flat foundation (terrain never pokes through),
+// 4 walls with a doorway, a door stoop, and windows.
 function room(b, o) {
   const { w, d, h, wall, floor = 0x6a5440, door = 'south', windows = true } = o;
   const x0 = -w / 2, x1 = w / 2, z0 = -d / 2, z1 = d / 2;
   const wopt = { rough: 0.88 };
-  // full-height opening (top = h) so no lintel can bump the player's head on
-  // sloped ground — guarantees every doorway is walkable
-  const gap = { c: 0, w: DOOR_W, top: h };
+
+  // solid foundation pad: flat top at local 0 (= base height, above all interior
+  // terrain), filled down past the lowest corner so nothing floats or shows through
+  b.floor(w, d, floor);
+
+  // doorway with a normal lintel — the flat floor guarantees head clearance
+  const gap = { c: 0, w: DOOR_W, top: Math.min(DOOR_H, h - 0.4) };
   wallRun(b, 'x', z1, x0, x1, h, wall, door === 'south' ? gap : null, wopt); // +z front
   wallRun(b, 'x', z0, x0, x1, h, wall, door === 'north' ? gap : null, wopt); // -z back
   wallRun(b, 'z', x1, z0, z1, h, wall, door === 'east' ? gap : null, wopt);  // +x right
   wallRun(b, 'z', x0, z0, z1, h, wall, door === 'west' ? gap : null, wopt);  // -x left
-  // cosmetic header beam over the door (no collision)
-  const hb = Math.min(DOOR_H, h - 0.3);
-  if (door === 'south') b.prop(DOOR_W + 0.5, h - hb, TH, 0, hb, z1, 0x3a2c1e);
-  else if (door === 'north') b.prop(DOOR_W + 0.5, h - hb, TH, 0, hb, z0, 0x3a2c1e);
-  else if (door === 'east') b.prop(TH, h - hb, DOOR_W + 0.5, x1, hb, 0, 0x3a2c1e);
-  else if (door === 'west') b.prop(TH, h - hb, DOOR_W + 0.5, x0, hb, 0, 0x3a2c1e);
-  b.floor(w, d, floor);
+  doorSteps(b, door, w, d);
+
   if (windows) {
     const wy = h * 0.55;
     if (door !== 'north') { b.glass(1.0, 1.0, -w * 0.26, wy, z0, 'x'); b.glass(1.0, 1.0, w * 0.26, wy, z0, 'x'); }
@@ -302,7 +318,8 @@ function windmill(b) {
 
 function temple(b) {
   // open colonnade: platform you walk on, columns with collision, peaked roof
-  b.box(12, 1.0, 10, 0, -0.5, 0, 0xc8b898, { rough: 0.95 });  // raised base (collision)
+  const baseH = Math.max(1.0, (b.padDepth || 0.5) + 0.5);
+  b.box(12, baseH, 10, 0, -(baseH - 0.5), 0, 0xc8b898, { rough: 0.95 }); // raised base, fills to terrain
   for (const ox of [-4.5, 4.5]) for (const oz of [-3.5, 3.5]) {
     b.cyl(0.55, 5.5, ox, 0.5, oz, 0xe8e0d0, { seg: 10, solid: true });
   }
@@ -385,25 +402,19 @@ export function buildBuildings(scene, staticMeshes, grid, ctx) {
   const { heightAt, slopeAt, WATER_LEVEL, HALF } = ctx;
 
   const place = (worldX, worldZ, fn, args = []) => {
-    // base on the LOWEST footprint corner so a flat-based building never has
-    // its doorway buried by rising ground on a slope
-    const sr = 4.5;
-    const terr = Math.min(
+    // sample footprint corners: build floor at the HIGHEST so terrain never pokes
+    // through it; the solid foundation pad fills down to below the LOWEST
+    const sr = 5;
+    const hs = [
       heightAt(worldX, worldZ),
       heightAt(worldX + sr, worldZ), heightAt(worldX - sr, worldZ),
-      heightAt(worldX, worldZ + sr), heightAt(worldX, worldZ - sr));
-    const baseY = Math.max(terr, WATER_LEVEL + 0.5);
-    // waterfront buildings get a stilt deck so they sit above the water and
-    // stay enterable (turns coastal sites into piers instead of skipping them)
-    if (baseY - terr > 0.5) {
-      const f = makeBuilder(scene, staticMeshes, grid, worldX, terr, worldZ);
-      const lift = baseY - terr;
-      f.box(12, 0.4, 12, 0, lift - 0.4, 0, 0x6a4a30, { rough: 0.9 });
-      for (const [px, pz] of [[-5, -5], [5, -5], [-5, 5], [5, 5]]) {
-        f.cyl(0.3, lift, px, 0, pz, 0x4a3320, { seg: 6 });
-      }
-    }
+      heightAt(worldX, worldZ + sr), heightAt(worldX, worldZ - sr),
+      heightAt(worldX + sr, worldZ + sr), heightAt(worldX - sr, worldZ - sr),
+    ];
+    const cmin = Math.min(...hs), cmax = Math.max(...hs);
+    const baseY = Math.max(cmax, WATER_LEVEL + 0.5);
     const b = makeBuilder(scene, staticMeshes, grid, worldX, baseY, worldZ);
+    b.padDepth = (baseY - cmin) + 0.6; // foundation reaches below the seabed/low corner
     fn(b, ...args);
   };
 

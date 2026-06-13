@@ -277,32 +277,7 @@ function scatterInstances(scene, count, geo, mat, placeFn, opts) {
 }
 
 function buildVegetation(scene, staticMeshes, grid) {
-  // grass (no collision, no shot/cam block)
-  const grassGeo = new THREE.ConeGeometry(0.08, 0.55, 4);
-  grassGeo.translate(0, 0.28, 0);
-  const grassMat = new THREE.MeshStandardMaterial({ color: 0x4a8f3a, roughness: 0.95 });
-  scatterInstances(scene, 9000, grassGeo, grassMat, () => {
-    const x = (Math.random() * 2 - 1) * HALF * 0.92;
-    const z = (Math.random() * 2 - 1) * HALF * 0.92;
-    const y = heightAt(x, z);
-    if (y < WATER_LEVEL + 0.5 || y > 42) return null;
-    if (slopeAt(x, z) > 0.42) return null;
-    return { x, y, z, ry: Math.random() * Math.PI * 2, s: 0.7 + Math.random() * 1.4,
-      rx: (Math.random() - 0.5) * 0.2, rz: (Math.random() - 0.5) * 0.2 };
-  }, { shadow: false, noCam: true, noHit: true });
-
-  const flowerGeo = new THREE.ConeGeometry(0.06, 0.2, 5);
-  flowerGeo.translate(0, 0.1, 0);
-  for (const col of [0xff6b9d, 0xffd166, 0xc77dff, 0xff8c42, 0xffffff]) {
-    scatterInstances(scene, 320, flowerGeo,
-      new THREE.MeshStandardMaterial({ color: col, roughness: 0.8 }), () => {
-        const x = (Math.random() * 2 - 1) * HALF * 0.7;
-        const z = (Math.random() * 2 - 1) * HALF * 0.7;
-        const y = heightAt(x, z);
-        if (y < WATER_LEVEL + 1 || y > 18 || slopeAt(x, z) > 0.3) return null;
-        return { x, y, z, ry: Math.random() * 6, s: 0.8 + Math.random() * 0.6 };
-      }, { shadow: false, noCam: true, noHit: true });
-  }
+  // (grass-tuft and flower cone scatter removed — they read as litter on the ground)
 
   // oak trees — trunks block movement & shots; canopies block shots only
   const trunkGeo = new THREE.CylinderGeometry(0.35, 0.55, 5.5, 8);
