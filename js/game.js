@@ -710,6 +710,7 @@ export class Game {
 
   _busTick(dt) {
     sfx.busStart();
+    sfx.busMusicStart();
     this.busT += dt / BUS_TIME;
     const t = Math.min(1, this.busT);
     this.bus.position.lerpVectors(BUS_FROM, BUS_TO, t);
@@ -722,6 +723,7 @@ export class Game {
   _dropFromBus() {
     this.phase = 'sky';
     sfx.busStop();
+    sfx.busMusicStop();
     this.bus.visible = this.busT < 1.2; // keep flying visually a moment
     this.vel.set(this.busDir.x * 4, -2, this.busDir.z * 4);
     // clamp drop point into the arena
@@ -1545,6 +1547,7 @@ export class Game {
     this.busT = 0;
     this.bus.visible = false;
     sfx.busStop();
+    sfx.busMusicStop();
     sfx.musicStart(); // lobby music
     this.zone = null; this.zoneState = null; this.stormWall.visible = false;
     if (this.lobbyStage) this.lobbyStage.visible = true;
