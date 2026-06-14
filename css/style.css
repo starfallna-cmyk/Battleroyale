@@ -394,3 +394,52 @@ canvas { display: block; }
   height: 100%; width: 0%; border-radius: 3px;
   background: linear-gradient(90deg, #ffb300, #ffd54f);
 }
+
+/* ===== accounts + admin ===== */
+.account-bar {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  margin-bottom: 18px; font-size: 14px; color: #9fb0d2;
+}
+.btn-link {
+  background: none; border: none; color: #ffb300; cursor: pointer;
+  font-weight: 700; font-size: 14px; text-decoration: underline; padding: 2px 4px;
+}
+.btn-link:hover { color: #ffd54f; }
+
+#authOverlay, #adminPanel { z-index: 80; }
+
+.auth-box, .admin-box {
+  width: 340px; max-width: 90vw; padding: 26px;
+  background: linear-gradient(170deg, #1b2a4a, #11182b);
+  border: 2px solid rgba(255,255,255,.12); border-radius: 16px;
+  box-shadow: 0 18px 50px rgba(0,0,0,.5); text-align: center; color: #fff;
+}
+.auth-box h2, .admin-box h2 { font-size: 26px; margin-bottom: 16px; }
+.auth-box input {
+  width: 100%; padding: 11px 14px; margin-bottom: 12px; font-size: 16px;
+  color: #fff; background: rgba(255,255,255,.08);
+  border: 2px solid rgba(255,255,255,.15); border-radius: 10px; outline: none;
+}
+.auth-box input:focus { border-color: #ffb300; }
+.auth-box .btn { width: 100%; margin-top: 4px; }
+.auth-status { min-height: 18px; margin: 10px 0; font-size: 13px; color: #ffd07a; }
+.auth-switch { font-size: 13px; color: #9fb0d2; margin-bottom: 14px; }
+
+.cheat-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 14px; margin-bottom: 10px; text-align: left;
+  background: rgba(255,255,255,.06); border-radius: 10px;
+  font-weight: 700; cursor: pointer;
+}
+.cheat-row small { display: block; font-weight: 400; color: #8fa3c8; font-size: 11px; }
+.cheat-row input { width: 22px; height: 22px; accent-color: #ff4655; cursor: pointer; flex: 0 0 auto; }
+.admin-box .btn { width: 100%; margin-top: 8px; }
+.admin-hint { margin-top: 12px; font-size: 12px; color: #8fa3c8; }
+
+#adminBtn {
+  position: absolute; top: 14px; right: 14px; z-index: 30;
+  padding: 8px 14px; font-weight: 800; font-size: 13px; color: #fff; cursor: pointer;
+  background: linear-gradient(180deg, #ff4655, #b8202f);
+  border: none; border-radius: 10px; box-shadow: 0 3px 0 #7c1620;
+}
+#adminBtn:hover { filter: brightness(1.12); }

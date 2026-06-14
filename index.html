@@ -24,6 +24,12 @@
       <h1 class="title">KILL<span>SHOT</span></h1>
       <p class="subtitle">build &middot; fight &middot; last one standing</p>
 
+      <div id="accountBar" class="account-bar">
+        <span id="accountInfo">Playing as guest</span>
+        <button id="btnAccount" class="btn-link">Log in / Sign up</button>
+        <button id="btnLogout" class="btn-link hidden">Log out</button>
+      </div>
+
       <input id="nameInput" type="text" maxlength="12" placeholder="Your name" autocomplete="off" />
 
       <div class="menu-buttons">
@@ -69,6 +75,38 @@
     </div>
   </div>
 
+  <!-- ===== AUTH ===== -->
+  <div id="authOverlay" class="screen overlay hidden">
+    <div class="auth-box">
+      <h2 id="authTitle">Log in</h2>
+      <input id="authEmail" type="email" placeholder="Email" autocomplete="email" />
+      <input id="authUser" type="text" maxlength="12" placeholder="Username" autocomplete="username" class="hidden" />
+      <input id="authPass" type="password" placeholder="Password" autocomplete="current-password" />
+      <button id="authSubmit" class="btn btn-main">LOG IN</button>
+      <div id="authStatus" class="auth-status"></div>
+      <div class="auth-switch">
+        <span id="authSwitchText">No account?</span>
+        <button id="authSwitch" class="btn-link">Create one</button>
+      </div>
+      <button id="authClose" class="btn btn-ghost">Cancel</button>
+    </div>
+  </div>
+
+  <!-- ===== ADMIN PANEL ===== -->
+  <div id="adminPanel" class="screen overlay hidden">
+    <div class="admin-box">
+      <h2>🛠️ ADMIN CHEATS</h2>
+      <label class="cheat-row"><span>🕊️ Fly <small>(Space up · Shift down)</small></span>
+        <input type="checkbox" id="cheatFly" /></label>
+      <label class="cheat-row"><span>🎯 Aimbot <small>(auto-locks nearest foe)</small></span>
+        <input type="checkbox" id="cheatAimbot" /></label>
+      <label class="cheat-row"><span>👁️ Wallhack <small>(see foes through walls)</small></span>
+        <input type="checkbox" id="cheatWallhack" /></label>
+      <button id="adminClose" class="btn btn-main">CLOSE</button>
+      <div class="admin-hint">Press <b>P</b> to toggle this panel in game</div>
+    </div>
+  </div>
+
   <!-- ===== HUD ===== -->
   <div id="hud" class="hidden">
     <div id="crosshair"><i class="ch ch-t"></i><i class="ch ch-b"></i><i class="ch ch-l"></i><i class="ch ch-r"></i><i class="ch-dot"></i></div>
@@ -97,6 +135,7 @@
     </div>
 
     <div id="roomBadge" class="hidden"></div>
+    <button id="adminBtn" class="hidden">🛠️ ADMIN</button>
     <div id="killfeed"></div>
 
     <div id="hpWrap">

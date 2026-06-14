@@ -293,6 +293,9 @@ export class Game {
     this.mouseDown = false;
     this.bloom = 0;
     this.gunKick = 0;
+    // admin cheats (toggled from the admin panel; only exposed to admin accounts)
+    this.cheats = { fly: false, aimbot: false, wallhack: false };
+    this._wallhackApplied = false;
     this.camDist = 3.6;
     this.tracers = [];
     this.dmgTexts = [];
@@ -415,6 +418,7 @@ export class Game {
     this.players.set(id, p);
     if (!this.scores.has(id)) this.scores.set(id, { name: p.name, kills: 0, wins: 0, ready: false, alive: false });
     this._refreshScores();
+    if (this.cheats.wallhack) this._applyWallhack(); // ESP applies to late joiners too
     return p;
   }
 
@@ -445,6 +449,7 @@ export class Game {
     p.avatar.group.visible = p.alive;
     p.avatar.group.add(p.hpBar.sprite, p.label);
     this.scene.add(p.avatar.group);
+    if (this.cheats.wallhack) this._applyWallhack();
   }
 
   _removePlayer(id) {
@@ -1010,7 +1015,7 @@ export class Game {
 
     // sprint: hold Shift while moving on land (Shift still dives in air/water).
     // grounded isn't required — terrain micro-bumps would otherwise flicker it.
-    this.sprinting = !this.gliding && !swimming && down && (ix !== 0 || iz !== 0);
+    this.sprinting = !this.cheats.fly && !this.gliding && !swimming && down && (ix !== 0 || iz !== 0);
     const speed = this.gliding ? GLIDE_SPEED : swimming ? SWIM_SPEED
       : this.sprinting ? SPEED * 1.55 : SPEED;
     const fw = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
@@ -1018,7 +1023,11 @@ export class Game {
     this.vel.x = (fw.x * iz + rt.x * ix) * speed;
     this.vel.z = (fw.z * iz + rt.z * ix) * speed;
 
-    if (swimming) {
+    if (this.cheats.fly && !swimming) {
+      // noclip-style flight: Space ascends, Shift descends, no gravity
+      const FLY = 17;
+      this.vel.y = (up ? FLY : 0) - (down ? FLY : 0);
+    } else if (swimming) {
       // buoyancy floats the player to the surface; Space/Shift swim up/down
       const targetY = WATER_LEVEL - 0.9;
       this.vel.y += (targetY - this.pos.y) * 3.2 * dt;
@@ -1307,7 +1316,14 @@ export class Game {
     this.camRoll += (Math.random() - 0.5) * w.kick * 5;
     this._spawnShell(muzzle, camDir);
 
-    const spreadBase = w.spread * (this.ads ? w.adsSpread : 1) + this.bloom;
+    // aimbot: snap the shot (and the view) onto the nearest living foe's head
+    const lock = this._aimbotTarget(w.range);
+    if (lock) {
+      camDir.copy(lock).sub(this.camera.position).normalize();
+      this.yaw = Math.atan2(-camDir.x, -camDir.z);
+      this.pitch = Math.max(-1.45, Math.min(1.45, Math.asin(Math.max(-1, Math.min(1, camDir.y)))));
+    }
+    const spreadBase = lock ? 0 : w.spread * (this.ads ? w.adsSpread : 1) + this.bloom;
     const dmgByPlayer = new Map();
     const buildHits = new Set(); // each build piece damaged at most once per shot
     let headAny = false, hitPoint = null, firstEnd = null;
@@ -1782,6 +1798,42 @@ export class Game {
     return true;
   }
 
+  // ===================== admin cheats =====================
+  setCheat(name, on) {
+    if (!(name in this.cheats)) return;
+    this.cheats[name] = !!on;
+    if (name === 'wallhack') this._applyWallhack();
+  }
+
+  // nearest living foe's head, for aimbot lock — null when aimbot is off
+  _aimbotTarget() {
+    if (!this.cheats.aimbot) return null;
+    const from = this.camera.position;
+    let best = null, bestD = Infinity;
+    const consider = (g) => {
+      const d = Math.hypot(g.position.x - from.x, g.position.y + 1.6 - from.y, g.position.z - from.z);
+      if (d > 160 || d >= bestD) return;
+      bestD = d; best = new THREE.Vector3(g.position.x, g.position.y + 1.6, g.position.z);
+    };
+    for (const p of this.players.values()) if (p.alive) consider(p.avatar.group);
+    for (const dm of this.dummies) if (dm.alive) consider(dm.avatar.group);
+    return best;
+  }
+
+  // wallhack ESP: draw foes (and their plates) on top of walls/terrain
+  _applyWallhack() {
+    const on = this.cheats.wallhack;
+    const apply = (g) => g.traverse((o) => {
+      if (!o.material) return;
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      for (const m of mats) { m.depthTest = !on; if (on) m.transparent = true; }
+      o.renderOrder = on ? 999 : 0;
+    });
+    for (const p of this.players.values()) apply(p.avatar.group);
+    for (const dm of this.dummies) apply(dm.avatar.group);
+    this._wallhackApplied = on;
+  }
+
   // ===================== camera & avatars =====================
   _updateCamera(dt) {
     if (this.state === 'lobby') {
@@ -1873,7 +1925,7 @@ export class Game {
       });
       // only show a foe's name + health when they're near AND in line of sight —
       // no more seeing everyone's nameplate through walls / across the map
-      const show = p.alive && this._canSee(p.avatar.group.position);
+      const show = p.alive && (this.cheats.wallhack || this._canSee(p.avatar.group.position));
       p.label.visible = show;
       p.hpBar.sprite.visible = show;
     }

@@ -3,6 +3,7 @@ import { Net } from './net.js';
 import { sfx } from './sfx.js';
 import { loadSettings, saveSettings, COLOR_SWATCHES, DEFAULT_BINDS, BIND_LABELS, keyName,
   EMOTE_NAMES, saveEmoteAudio, clearEmoteAudio, getEmoteAudio } from './settings.js';
+import { signUp, signIn, signOut, getProfile, onAuthChange } from './auth.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -48,6 +49,8 @@ function startGame(roomCode) {
   game = new Game({ net, myName: myName(), container: document.body, roomCode,
     myColor: settings.color, binds: settings.binds });
   window.__game = game; // debug/test handle
+  applyCheats();              // carry over any admin toggles into the new game
+  refreshAdminButton();       // show the in-game ADMIN button for admins
 
   if (net && !net.isHost) {
     net.onClose = () => {
@@ -208,3 +211,112 @@ $('customColor').addEventListener('input', (e) => {
 $('btnResetBinds').addEventListener('click', () => { settings.binds = { ...DEFAULT_BINDS }; saveSettings(settings); renderSettings(); });
 $('btnSettings').addEventListener('click', () => { renderSettings(); settingsEl.classList.remove('hidden'); });
 $('btnCloseSettings').addEventListener('click', () => settingsEl.classList.add('hidden'));
+
+// ===================== accounts (Supabase) + admin panel =====================
+let profile = null;                 // { username, is_admin } when logged in
+const cheatState = { fly: false, aimbot: false, wallhack: false };
+
+function isAdmin() { return !!(profile && profile.is_admin); }
+
+function applyCheats() {
+  if (!game) return;
+  for (const k of Object.keys(cheatState)) game.setCheat(k, isAdmin() && cheatState[k]);
+}
+
+function refreshAdminButton() {
+  $('adminBtn').classList.toggle('hidden', !(game && isAdmin()));
+}
+
+async function refreshAccount() {
+  profile = await getProfile();
+  const info = $('accountInfo');
+  if (profile) {
+    info.textContent = `👤 ${profile.username}${profile.is_admin ? ' · ADMIN' : ''}`;
+    $('btnAccount').classList.add('hidden');
+    $('btnLogout').classList.remove('hidden');
+    if (!nameInput.value.trim() && profile.username) nameInput.value = profile.username;
+  } else {
+    info.textContent = 'Playing as guest';
+    $('btnAccount').classList.remove('hidden');
+    $('btnLogout').classList.add('hidden');
+    // a guest can't keep cheats on
+    for (const k of Object.keys(cheatState)) cheatState[k] = false;
+  }
+  refreshAdminButton();
+  applyCheats();
+}
+
+// ---- auth overlay ----
+const authEl = $('authOverlay');
+let authMode = 'login'; // 'login' | 'signup'
+
+function setAuthMode(mode) {
+  authMode = mode;
+  const signup = mode === 'signup';
+  $('authTitle').textContent = signup ? 'Create account' : 'Log in';
+  $('authSubmit').textContent = signup ? 'SIGN UP' : 'LOG IN';
+  $('authUser').classList.toggle('hidden', !signup);
+  $('authSwitchText').textContent = signup ? 'Have an account?' : 'No account?';
+  $('authSwitch').textContent = signup ? 'Log in' : 'Create one';
+  $('authStatus').textContent = '';
+}
+
+function openAuth() { setAuthMode('login'); authEl.classList.remove('hidden'); $('authEmail').focus(); }
+function closeAuth() { authEl.classList.add('hidden'); }
+
+$('btnAccount').addEventListener('click', openAuth);
+$('authClose').addEventListener('click', closeAuth);
+$('authSwitch').addEventListener('click', () => setAuthMode(authMode === 'login' ? 'signup' : 'login'));
+
+$('authSubmit').addEventListener('click', async () => {
+  const email = $('authEmail').value.trim();
+  const pass = $('authPass').value;
+  const user = $('authUser').value.trim();
+  const st = $('authStatus');
+  if (!email || !pass) { st.textContent = 'Enter your email and password.'; return; }
+  st.textContent = 'Working…';
+  const res = authMode === 'signup' ? await signUp(email, pass, user || email.split('@')[0])
+                                    : await signIn(email, pass);
+  if (!res.ok) { st.textContent = res.error; return; }
+  if (res.needsConfirm) {
+    st.textContent = 'Check your email to confirm, then log in.';
+    setAuthMode('login');
+    return;
+  }
+  await refreshAccount();
+  closeAuth();
+});
+
+$('btnLogout').addEventListener('click', async () => { await signOut(); await refreshAccount(); });
+
+// ---- admin panel ----
+const adminEl = $('adminPanel');
+const cheatBoxes = { fly: $('cheatFly'), aimbot: $('cheatAimbot'), wallhack: $('cheatWallhack') };
+
+function openAdmin() {
+  if (!isAdmin()) return;
+  for (const k of Object.keys(cheatBoxes)) cheatBoxes[k].checked = cheatState[k];
+  if (game && game.state === 'match') document.exitPointerLock();
+  adminEl.classList.remove('hidden');
+}
+function closeAdmin() { adminEl.classList.add('hidden'); }
+
+for (const k of Object.keys(cheatBoxes)) {
+  cheatBoxes[k].addEventListener('change', () => {
+    cheatState[k] = cheatBoxes[k].checked;
+    if (game) game.setCheat(k, isAdmin() && cheatState[k]);
+  });
+}
+$('adminClose').addEventListener('click', closeAdmin);
+$('adminBtn').addEventListener('click', openAdmin);
+
+// press P in game to toggle the admin panel
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'KeyP' && isAdmin() && game) {
+    e.preventDefault();
+    adminEl.classList.contains('hidden') ? openAdmin() : closeAdmin();
+  }
+});
+
+onAuthChange(() => { refreshAccount(); });
+refreshAccount();
