@@ -9,7 +9,7 @@ export const COLOR_SWATCHES = [
 // action -> default KeyboardEvent.code
 export const DEFAULT_BINDS = {
   forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD',
-  jump: 'Space', sprint: 'ShiftLeft', reload: 'KeyR', edit: 'KeyF',
+  jump: 'Space', sprint: 'ShiftLeft', reload: 'KeyR', edit: 'KeyF', emote: 'KeyB',
   w1: 'Digit1', w2: 'Digit2', w3: 'Digit3', w4: 'Digit4',
   wall: 'KeyZ', floor: 'KeyX', ramp: 'KeyC',
 };
@@ -17,9 +17,50 @@ export const DEFAULT_BINDS = {
 export const BIND_LABELS = {
   forward: 'Move forward', back: 'Move back', left: 'Strafe left', right: 'Strafe right',
   jump: 'Jump / drop / swim up', sprint: 'Sprint / dive', reload: 'Reload', edit: 'Edit build',
+  emote: 'Emote wheel (hold)',
   w1: 'Assault rifle', w2: 'Shotgun', w3: 'Sniper', w4: 'Pickaxe',
   wall: 'Build wall', floor: 'Build floor', ramp: 'Build ramp',
 };
+
+export const EMOTE_NAMES = ['Wave', 'Cheer', 'Floss', 'Robot'];
+
+// uploaded per-emote music is stored as Blobs in IndexedDB (too big for localStorage)
+let _db = null;
+function db() {
+  if (_db) return _db;
+  _db = new Promise((resolve, reject) => {
+    const req = indexedDB.open('killshot_emotes', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('audio');
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  return _db;
+}
+export async function saveEmoteAudio(idx, blob) {
+  const d = await db();
+  return new Promise((res, rej) => {
+    const tx = d.transaction('audio', 'readwrite');
+    tx.objectStore('audio').put(blob, idx);
+    tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+  });
+}
+export async function clearEmoteAudio(idx) {
+  const d = await db();
+  return new Promise((res) => {
+    const tx = d.transaction('audio', 'readwrite');
+    tx.objectStore('audio').delete(idx);
+    tx.oncomplete = res; tx.onerror = res;
+  });
+}
+export async function getEmoteAudio(idx) {
+  const d = await db();
+  return new Promise((res) => {
+    const tx = d.transaction('audio', 'readonly');
+    const r = tx.objectStore('audio').get(idx);
+    r.onsuccess = () => res(r.result || null);
+    r.onerror = () => res(null);
+  });
+}
 
 export function loadSettings() {
   let s = {};

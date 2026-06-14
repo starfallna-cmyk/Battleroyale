@@ -5,6 +5,7 @@ import { WEAPONS, damageAt } from './weapons.js';
 import { Avatar, makeNameLabel } from './avatar.js';
 import { buildMap, ARENA, SPAWNS, terrainHeightAt, WATER_LEVEL, updateWater } from './map.js';
 import { PROTO } from './net.js';
+import { getEmoteAudio } from './settings.js';
 import { sfx } from './sfx.js';
 
 // ===== Tuning =====
@@ -300,6 +301,11 @@ export class Game {
     this.netT = 0;
     this.sinceHit = 999;   // seconds since last damage (for health regen)
     this.regenNetT = 0;
+    this.emote = -1;        // current emote index, -1 = none
+    this.emoteWheelOpen = false;
+    this.emoteSel = 0;
+    this.emoteVec = { x: 0, y: 0 };
+    this.emoteAudio = null;
 
     this.flashLight = new THREE.PointLight(0xffc66e, 0, 10);
     this.scene.add(this.flashLight);
@@ -357,7 +363,7 @@ export class Game {
       reloadBar: el('reloadBar'), reloadFill: el('reloadFill'), ammoIcon: el('ammoIcon'),
       waterOverlay: el('waterOverlay'),
       minimapWrap: el('minimapWrap'), minimap: el('minimap'), stormStatus: el('stormStatus'),
-      stormWarn: el('stormWarn'), stormVignette: el('stormVignette'),
+      stormWarn: el('stormWarn'), stormVignette: el('stormVignette'), emoteWheel: el('emoteWheel'),
       scoreList: el('scoreList'), aliveBadge: el('aliveBadge'),
       killfeed: el('killfeed'), hitmarker: el('hitmarker'),
       damageFlash: el('damageFlash'), scope: el('scopeOverlay'),
@@ -487,6 +493,59 @@ export class Game {
     this.scene.add(this.lobbyLight);
   }
 
+  // ===================== emotes =====================
+  _openEmoteWheel() {
+    if (this.dead || this.state !== 'match' || this.phase !== 'normal' || !this.grounded || this.emoteWheelOpen) return;
+    this.emoteWheelOpen = true;
+    this.emoteSel = 0;
+    this.emoteVec.x = 0; this.emoteVec.y = 0;
+    this.ui.emoteWheel.classList.remove('hidden');
+    this._refreshEmoteWheel();
+  }
+
+  _refreshEmoteWheel() {
+    this.ui.emoteWheel.querySelectorAll('.emote-seg').forEach((s) => {
+      s.classList.toggle('sel', +s.dataset.seg === this.emoteSel);
+    });
+  }
+
+  _closeEmoteWheel(play) {
+    if (!this.emoteWheelOpen) return;
+    this.emoteWheelOpen = false;
+    this.ui.emoteWheel.classList.add('hidden');
+    if (play) this._playEmote(this.emoteSel);
+  }
+
+  _playEmote(idx) {
+    this.emote = idx;
+    if (this.net) this.net.send({ t: 'emote', e: idx });
+    // play this emote's uploaded music (local only), or a click otherwise
+    this._stopEmoteAudio();
+    getEmoteAudio(idx).then((blob) => {
+      if (!blob || this.emote !== idx) return;
+      try {
+        const url = URL.createObjectURL(blob);
+        const a = new Audio(url); a.loop = true; a.volume = 0.7;
+        const p = a.play(); if (p && p.catch) p.catch(() => {});
+        this.emoteAudio = { a, url };
+      } catch (e) { /* ignore */ }
+    });
+  }
+
+  _stopEmoteAudio() {
+    if (!this.emoteAudio) return;
+    try { this.emoteAudio.a.pause(); URL.revokeObjectURL(this.emoteAudio.url); } catch (e) { /* */ }
+    this.emoteAudio = null;
+  }
+
+  _cancelEmote() {
+    if (this.emoteWheelOpen) this._closeEmoteWheel(false);
+    if (this.emote < 0) return;
+    this.emote = -1;
+    this._stopEmoteAudio();
+    if (this.net) this.net.send({ t: 'emote', e: -1 });
+  }
+
   // ===================== input =====================
   _action(code) { // map a key code to a bound action name
     const b = this.bind;
@@ -509,12 +568,30 @@ export class Game {
         case 'ramp': this._selectBuild(2); break;
         case 'reload': this._startReload(); break;
         case 'edit': this._tryEdit(); break;
+        case 'emote': this._openEmoteWheel(); break;
         case 'jump': e.preventDefault(); break;
       }
     };
-    this._onKeyUp = (e) => { this.keys[e.code] = false; };
+    this._onKeyUp = (e) => {
+      this.keys[e.code] = false;
+      if (e.code === this.bind.emote && this.emoteWheelOpen) this._closeEmoteWheel(true);
+    };
     this._onMouseMove = (e) => {
       if (!this._locked()) return;
+      if (this.emoteWheelOpen) { // mouse direction picks the wheel segment
+        this.emoteVec.x += e.movementX; this.emoteVec.y += e.movementY;
+        const m = Math.hypot(this.emoteVec.x, this.emoteVec.y);
+        if (m > 14) {
+          const ang = Math.atan2(this.emoteVec.y, this.emoteVec.x); // 0=right, PI/2=down
+          // sectors: up=0, right=1, down=2, left=3
+          if (ang > -Math.PI / 4 && ang <= Math.PI / 4) this.emoteSel = 1;
+          else if (ang > Math.PI / 4 && ang <= 3 * Math.PI / 4) this.emoteSel = 2;
+          else if (ang > -3 * Math.PI / 4 && ang <= -Math.PI / 4) this.emoteSel = 0;
+          else this.emoteSel = 3;
+          this._refreshEmoteWheel();
+        }
+        return;
+      }
       const sens = 0.0023 * (this.ads && WEAPONS[this.weaponIdx].scope && this.mode === 'weapon' ? 0.4 : 1);
       this.yaw -= e.movementX * sens;
       this.pitch -= e.movementY * sens;
@@ -551,6 +628,7 @@ export class Game {
   _item() { return this.mode === 'build' ? 4 : this.weaponIdx; }
 
   _selectWeapon(i) {
+    this._cancelEmote();
     this.mode = 'weapon';
     this.weaponIdx = i;
     this.reloadT = 0;
@@ -560,6 +638,7 @@ export class Game {
   }
 
   _selectBuild(i) {
+    this._cancelEmote();
     this.mode = 'build';
     this.buildIdx = i;
     this.reloadT = 0;
@@ -881,6 +960,9 @@ export class Game {
       if (this.keys[this.bind.right]) ix += 1;
       if (this.keys[this.bind.left]) ix -= 1;
     }
+    // moving (or jumping) cancels an emote; the wheel itself freezes movement
+    if (this.emoteWheelOpen) { ix = 0; iz = 0; }
+    else if (this.emote >= 0 && (ix !== 0 || iz !== 0 || this.keys[this.bind.jump])) this._cancelEmote();
     const len = Math.hypot(ix, iz) || 1;
     ix /= len; iz /= len;
 
@@ -1066,7 +1148,7 @@ export class Game {
       const type = BUILD_TYPES[this.buildIdx];
       const placement = this.builds.computePlacement(type, this.pos, this.yaw, this.pitch);
       this.builds.showGhost(placement);
-      if (this.mouseDown && this.buildCd <= 0 && this._locked()) this._placeBuild(placement);
+      if (this.mouseDown && this.buildCd <= 0 && !this.emoteWheelOpen && this._locked()) this._placeBuild(placement);
     } else if (this.mouseDown && WEAPONS[this.weaponIdx].auto) {
       this._tryFire();
     }
@@ -1135,7 +1217,8 @@ export class Game {
 
   _tryFire() {
     if (this.dead || this.state !== 'match' || this.phase !== 'normal' || this.mode !== 'weapon' ||
-        this.shootCd > 0 || this.reloadT > 0 || !this._locked()) return;
+        this.shootCd > 0 || this.reloadT > 0 || this.emoteWheelOpen || !this._locked()) return;
+    if (this.emote >= 0) this._cancelEmote();
     const w = WEAPONS[this.weaponIdx];
     if (!w.melee && this.ammo[this.weaponIdx] <= 0) { this._startReload(); return; }
 
@@ -1392,6 +1475,7 @@ export class Game {
 
   _die() {
     this.dead = true;
+    this._cancelEmote();
     this.meAvatar.group.visible = false;
     const byStorm = this.lastHitBy === 'storm';
     const killer = (!byStorm && this.lastHitBy !== null) ? this.scores.get(this.lastHitBy) : null;
@@ -1469,6 +1553,7 @@ export class Game {
 
   _startMatch() {
     this.state = 'match';
+    this._cancelEmote();
     sfx.musicStop(); // stop lobby music when the round begins
     if (this.lobbyStage) this.lobbyStage.visible = false;
     if (this.lobbyLight) this.lobbyLight.intensity = 0;
@@ -1541,6 +1626,7 @@ export class Game {
 
   _enterLobby() {
     this.state = 'lobby';
+    this._cancelEmote();
     this.phase = 'normal';
     this.dead = false;
     this.hp = 100;
@@ -1696,6 +1782,7 @@ export class Game {
       recoilZ: this.gunKick,
       gliding: this.gliding,
       reloading: this.reloadT > 0,
+      emote: this.emote,
     });
 
     const k = Math.min(1, dt * 14);
@@ -1708,7 +1795,7 @@ export class Game {
       p.curPitch += (p.targetPitch - p.curPitch) * k;
       p.avatar.update(dt, {
         speed: p.speed, grounded: p.grounded, pitch: p.curPitch,
-        item: p.item, gliding: p.gliding, reloading: p.reloading,
+        item: p.item, gliding: p.gliding, reloading: p.reloading, emote: p.emote ?? -1,
       });
     }
 
@@ -1854,6 +1941,11 @@ export class Game {
       case 'edit':
         if (this.builds.applyEdit(m.k, m.e)) sfx.build();
         break;
+      case 'emote': { // a player started/stopped an emote
+        const p = this._getPlayer(from);
+        p.emote = (typeof m.e === 'number') ? m.e : -1;
+        break;
+      }
       case 'zone': // guests receive the storm state from the host
         if (!this.net.isHost) {
           this.zone = { cx: m.cx, cz: m.cz, r: m.r, nr: m.nr,

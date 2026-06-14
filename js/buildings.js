@@ -81,7 +81,11 @@ function makeBuilder(scene, staticMeshes, grid, wx, wy, wz) {
       // footprint corner) filled down past the lowest corner — gives a flat
       // interior that terrain can never poke through, and no floating on slopes.
       const padH = Math.max(0.5, b.padDepth || 0.5);
-      b.box(w, padH, d, 0, -padH, 0, color, { rough: 0.92 });
+      // interior floor flush with the walls
+      b.box(w, 0.3, d, 0, -0.3, 0, color, { rough: 0.92 });
+      // foundation plinth below it, inset + stone-coloured so walls read as
+      // sitting ON a base rather than the wall just continuing into the ground
+      if (padH > 0.5) b.box(w - 0.5, padH - 0.28, d - 0.5, 0, -padH, 0, 0x6a665e, { rough: 0.95 });
     },
     glass(w, h, lx, ly, lz, axis) {
       const geo = axis === 'z' ? new THREE.BoxGeometry(0.05, h, w) : new THREE.BoxGeometry(w, h, 0.05);
@@ -420,7 +424,7 @@ export function buildBuildings(scene, staticMeshes, grid, ctx, footprints = []) 
       hs.push(heightAt(worldX + ox, worldZ + oz));
     }
     const cmin = Math.min(...hs), cmax = Math.max(...hs);
-    if (cmax - cmin > 11) return; // too steep to sit cleanly — leave a gap, not a tower
+    if (cmax - cmin > 8) return; // too steep to sit cleanly — leave a gap, not a tower
     const baseY = Math.max(cmax, WATER_LEVEL + 0.5);
     const b = makeBuilder(scene, staticMeshes, grid, worldX, baseY, worldZ);
     b.padDepth = (baseY - cmin) + 1.0; // reach safely below the lowest corner

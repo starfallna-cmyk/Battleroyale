@@ -6,7 +6,7 @@ A browser-based third-person build-fight battle royale set on a huge **840m lush
 
 **▶ [Play it now](https://chezburgar.github.io/1v1-battle/)** — then:
 
-- **Settings** — rebind keys and pick your character color (saved in your browser)
+- **Settings** — rebind keys, pick your character color, and upload your own music for each emote (saved in your browser)
 - **Practice** — solo arena with target dummies (respawns on)
 - **Create Game** — generates a 4-letter room code; share it with up to 5 friends
 - **Join Game** — enter a room code; if a round is running you spectate until the next one
@@ -31,6 +31,7 @@ Online matches are **battle royale**: everyone waits in the lobby and **readies 
 | `X` | Build floor |
 | `C` | Build ramp |
 | `F` | **Edit** the build you're aiming at |
+| `B` | **Emote wheel** (hold, aim with mouse, release) |
 | `R` | Reload |
 | `Esc` | Release mouse |
 

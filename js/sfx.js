@@ -47,9 +47,32 @@ function tone(freq, vol, dur, type = 'square') {
 let busNodes = null;
 let music = null;
 let busMusic = null;
+let menuMusic = null;
 
 export const sfx = {
   unlock() { ac(); }, // call on first user gesture
+  // main-menu music — looped MP3; retries on first gesture if autoplay is blocked
+  menuMusicStart() {
+    if (menuMusic) return;
+    const a = new Audio('assets/menu-music.mp3');
+    a.loop = true; a.volume = 0.4;
+    menuMusic = { a };
+    const tryPlay = () => { const p = a.play(); if (p && p.catch) p.catch(() => {}); };
+    tryPlay();
+    const onGesture = () => { if (menuMusic) tryPlay(); window.removeEventListener('pointerdown', onGesture); window.removeEventListener('keydown', onGesture); };
+    window.addEventListener('pointerdown', onGesture);
+    window.addEventListener('keydown', onGesture);
+  },
+  menuMusicStop() {
+    if (!menuMusic) return;
+    const m = menuMusic; menuMusic = null;
+    try {
+      const fo = setInterval(() => {
+        m.a.volume = Math.max(0, m.a.volume - 0.06);
+        if (m.a.volume <= 0) { clearInterval(fo); m.a.pause(); }
+      }, 40);
+    } catch (e) { try { m.a.pause(); } catch (_) {} }
+  },
   // battle-bus music — looped MP3 while aboard the bus
   busMusicStart() {
     if (busMusic) return;

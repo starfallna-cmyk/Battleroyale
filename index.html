@@ -42,7 +42,7 @@
 
       <div class="controls-help">
         <div><b>WASD</b> move &middot; <b>SHIFT</b> sprint &middot; <b>SPACE</b> jump / drop / swim up &middot; <b>LMB</b> shoot / place &middot; <b>RMB</b> aim</div>
-        <div><b>1 2 3</b> weapons &middot; <b>4</b> pickaxe &middot; <b>Z</b> wall &middot; <b>X</b> floor &middot; <b>C</b> ramp &middot; <b>F</b> edit &middot; <b>R</b> reload &middot; <b>WHEEL</b> cycle</div>
+        <div><b>1 2 3</b> weapons &middot; <b>4</b> pickaxe &middot; <b>Z X C</b> build &middot; <b>F</b> edit &middot; <b>R</b> reload &middot; <b>B</b> emote &middot; <b>WHEEL</b> cycle</div>
         <div>Up to <b>6 players</b> &middot; a closing storm forces the fight to an end</div>
       </div>
     </div>
@@ -58,6 +58,8 @@
         <label for="customColor">Custom</label>
         <input id="customColor" type="color" value="#4fc3f7" />
       </div>
+      <h3>Emote music <span class="hint">(upload audio per dance)</span></h3>
+      <div id="emoteList" class="bind-list"></div>
       <h3>Keybinds <span class="hint">(click, then press a key)</span></h3>
       <div id="bindList" class="bind-list"></div>
       <div class="settings-actions">
@@ -84,6 +86,14 @@
     </div>
     <div id="stormWarn" class="hidden">⚡ GET TO THE ZONE</div>
     <div id="prompt" class="hidden"></div>
+
+    <div id="emoteWheel" class="hidden">
+      <div class="emote-seg" data-seg="0"><span>Wave</span></div>
+      <div class="emote-seg" data-seg="1"><span>Cheer</span></div>
+      <div class="emote-seg" data-seg="2"><span>Floss</span></div>
+      <div class="emote-seg" data-seg="3"><span>Robot</span></div>
+      <div class="emote-hub">EMOTE</div>
+    </div>
 
     <div id="roomBadge" class="hidden"></div>
     <div id="killfeed"></div>

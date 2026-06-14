@@ -208,6 +208,45 @@ canvas { display: block; }
   animation: promptPulse 1s ease-in-out infinite;
 }
 
+/* ===== Emote wheel ===== */
+#emoteWheel {
+  position: absolute; top: 50%; left: 50%; width: 280px; height: 280px;
+  transform: translate(-50%, -50%); pointer-events: none;
+}
+.emote-seg {
+  position: absolute; width: 110px; height: 64px; left: 85px; top: 108px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(10, 16, 32, .72); border: 2px solid rgba(255,255,255,.18);
+  border-radius: 12px; color: #c9d4ec; font-weight: 800; font-size: 16px;
+  transition: transform .08s, background .08s, color .08s;
+}
+.emote-seg[data-seg="0"] { transform: translate(0, -108px); }   /* up */
+.emote-seg[data-seg="1"] { transform: translate(98px, 0); }     /* right */
+.emote-seg[data-seg="2"] { transform: translate(0, 108px); }    /* down */
+.emote-seg[data-seg="3"] { transform: translate(-98px, 0); }    /* left */
+.emote-seg.sel {
+  background: rgba(255, 179, 0, .9); color: #1a1208; border-color: #fff;
+}
+.emote-seg[data-seg="0"].sel { transform: translate(0, -108px) scale(1.12); }
+.emote-seg[data-seg="1"].sel { transform: translate(98px, 0) scale(1.12); }
+.emote-seg[data-seg="2"].sel { transform: translate(0, 108px) scale(1.12); }
+.emote-seg[data-seg="3"].sel { transform: translate(-98px, 0) scale(1.12); }
+.emote-hub {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 90px; height: 90px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(10, 16, 32, .8); border: 2px solid rgba(255,255,255,.2);
+  color: #8fa3c8; font-weight: 900; font-size: 14px; letter-spacing: 1px;
+}
+.emote-up-row { display: flex; align-items: center; gap: 8px;
+  background: rgba(255,255,255,.05); border-radius: 8px; padding: 7px 12px; }
+.emote-up-row .ename { flex: 1; color: #c9d4ec; font-size: 14px; }
+.emote-up-row .estatus { font-size: 12px; color: #8bea5a; }
+.emote-up-row label.up-btn { cursor: pointer; padding: 4px 10px; border-radius: 6px;
+  background: rgba(255,255,255,.12); color: #fff; font-size: 12px; font-weight: 700; }
+.emote-up-row .clr-btn { cursor: pointer; padding: 4px 8px; border-radius: 6px;
+  background: rgba(255,80,80,.25); color: #ffd; font-size: 12px; border: none; }
+
 /* ===== Lobby ===== */
 /* let the 3D show-stage shine through: card sits on the right, scene visible */
 #lobby.overlay {

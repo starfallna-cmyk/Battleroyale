@@ -1,7 +1,8 @@
 import { Game } from './game.js';
 import { Net } from './net.js';
 import { sfx } from './sfx.js';
-import { loadSettings, saveSettings, COLOR_SWATCHES, DEFAULT_BINDS, BIND_LABELS, keyName } from './settings.js';
+import { loadSettings, saveSettings, COLOR_SWATCHES, DEFAULT_BINDS, BIND_LABELS, keyName,
+  EMOTE_NAMES, saveEmoteAudio, clearEmoteAudio, getEmoteAudio } from './settings.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -15,6 +16,7 @@ const codeInput = $('codeInput');
 const lockOverlay = $('lockOverlay');
 
 nameInput.value = localStorage.getItem('ovob_name') || '';
+sfx.menuMusicStart(); // background music on the main menu
 
 let game = null;
 let net = null;
@@ -35,6 +37,7 @@ function randomCode() {
 
 function startGame(roomCode) {
   if (game) return;
+  sfx.menuMusicStop(); // stop menu music when entering a game
   menu.classList.add('hidden');
   hud.classList.remove('hidden');
   if (roomCode) {
@@ -125,6 +128,28 @@ function renderSettings() {
     sw.appendChild(d);
   }
   $('customColor').value = hex(settings.color);
+  // emote music uploads
+  const elist = $('emoteList');
+  elist.innerHTML = '';
+  EMOTE_NAMES.forEach((name, idx) => {
+    const row = document.createElement('div');
+    row.className = 'emote-up-row';
+    const n = document.createElement('span'); n.className = 'ename'; n.textContent = name;
+    const status = document.createElement('span'); status.className = 'estatus';
+    getEmoteAudio(idx).then((b) => { status.textContent = b ? '♪ custom' : ''; });
+    const up = document.createElement('label'); up.className = 'up-btn'; up.textContent = 'Upload';
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept = 'audio/*'; input.style.display = 'none';
+    input.addEventListener('change', async () => {
+      const f = input.files[0];
+      if (f) { await saveEmoteAudio(idx, f); status.textContent = '♪ custom'; }
+    });
+    up.appendChild(input);
+    const clr = document.createElement('button'); clr.className = 'clr-btn'; clr.textContent = '✕';
+    clr.addEventListener('click', async () => { await clearEmoteAudio(idx); status.textContent = ''; });
+    row.append(n, status, up, clr);
+    elist.appendChild(row);
+  });
   // keybinds
   const list = $('bindList');
   list.innerHTML = '';

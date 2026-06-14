@@ -103,10 +103,11 @@ export class Avatar {
     skull.name = 'head';
     const jaw = add(this.head, rbox(0.2, 0.12, 0.2), skin, 0, 0.085, 0.01);                // jaw
     jaw.name = 'head';
-    const hairCap = add(this.head, new THREE.SphereGeometry(0.165, 18, 14, 0, Math.PI * 2, 0, Math.PI * 0.62), hair, 0, 0.165, 0.008);
-    hairCap.rotation.x = -0.16; hairCap.name = 'head';
-    const hairBack = add(this.head, new THREE.SphereGeometry(0.152, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), hair, 0, 0.14, 0.05);
+    const hairCap = add(this.head, new THREE.SphereGeometry(0.168, 18, 14, 0, Math.PI * 2, 0, Math.PI * 0.5), hair, 0, 0.175, 0.0);
+    hairCap.name = 'head'; // sits up off the brow so the face is clear
+    const hairBack = add(this.head, new THREE.SphereGeometry(0.155, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.52), hair, 0, 0.15, 0.05);
     hairBack.rotation.x = Math.PI * 0.5; hairBack.name = 'head';
+    add(this.head, rbox(0.31, 0.05, 0.02), hair, 0, 0.255, -0.146); // fringe edge
     for (const s of [-1, 1]) {
       add(this.head, new THREE.SphereGeometry(0.034, 10, 8), white, s * 0.06, 0.175, -0.13);  // eye white
       add(this.head, new THREE.SphereGeometry(0.018, 8, 8), iris, s * 0.066, 0.175, -0.152);  // iris
@@ -142,7 +143,9 @@ export class Avatar {
       add(elb, rbox(0.1, 0.16, 0.09), dark, 0, -0.13, 0);                                  // forearm guard
       add(elb, new THREE.CylinderGeometry(0.068, 0.062, 0.05, 10), rubber, 0, -0.245, 0);  // wrist cuff
       add(elb, new THREE.SphereGeometry(0.072, 10, 8), rubber, 0, -0.3, 0);                // glove
-      add(elb, rbox(0.08, 0.04, 0.06), dark, 0, -0.3, -0.04);                              // knuckle plate
+      add(elb, rbox(0.085, 0.045, 0.06), dark, 0, -0.3, -0.04);                            // knuckle plate
+      for (const fx of [-0.025, 0, 0.025]) add(elb, rbox(0.02, 0.025, 0.05), rubber, fx, -0.33, -0.05); // fingers
+      add(elb, rbox(0.025, 0.05, 0.03), rubber, 0.045, -0.31, 0.0);                        // thumb
       sh.add(elb);
       this.group.add(sh);
     }
@@ -189,13 +192,50 @@ export class Avatar {
 
   swing() { this.swingT = 0.35; }
 
-  update(dt, { speed = 0, grounded = true, pitch = 0, item = 0, recoilZ = 0, gliding = false, reloading = false } = {}) {
-    if (item !== this.item) {
-      this.weapons.forEach((w, i) => { w.visible = i === item; });
-      this.item = item;
+  // looping dance poses (0=wave, 1=cheer, 2=floss, 3=robot)
+  _dance(e) {
+    const t = this.emoteClock;
+    const hipL = this.hipL, hipR = this.hipR, kL = this.kneeL, kR = this.kneeR;
+    hipL.rotation.x = hipR.rotation.x = kL.rotation.x = kR.rotation.x = 0;
+    this.head.rotation.x = 0; this.torso.rotation.x = 0; this.torso.rotation.z = 0;
+    if (e === 0) { // wave
+      this.shR.rotation.x = -2.5; this.shR.rotation.z = -0.2 + Math.sin(t * 7) * 0.35; this.elbR.rotation.x = -0.35;
+      this.shL.rotation.x = 0.25; this.shL.rotation.z = 0.18; this.elbL.rotation.x = -0.3;
+      this.torso.rotation.x = Math.sin(t * 3) * 0.05;
+    } else if (e === 1) { // cheer / bounce
+      const b = Math.abs(Math.sin(t * 6));
+      this.shR.rotation.x = -2.6 + Math.sin(t * 12) * 0.3; this.shL.rotation.x = -2.6 - Math.sin(t * 12) * 0.3;
+      this.shR.rotation.z = -0.2; this.shL.rotation.z = 0.2; this.elbR.rotation.x = -0.25; this.elbL.rotation.x = -0.25;
+      kL.rotation.x = b * 0.5; kR.rotation.x = (1 - b) * 0.5;
+      this.torso.rotation.x = Math.sin(t * 12) * 0.05;
+    } else if (e === 2) { // floss / disco swing
+      const s = Math.sin(t * 7);
+      this.shR.rotation.x = 1.0 + s * 0.2; this.shR.rotation.z = -0.7 - s * 0.5; this.elbR.rotation.x = -0.25;
+      this.shL.rotation.x = 1.0 - s * 0.2; this.shL.rotation.z = 0.7 - s * 0.5; this.elbL.rotation.x = -0.25;
+      this.torso.rotation.z = s * 0.12;
+      hipL.rotation.x = s * 0.18; hipR.rotation.x = -s * 0.18; kL.rotation.x = 0.12; kR.rotation.x = 0.12;
+    } else { // robot
+      const a = [0, 0.7, 1.3, 0.7][Math.floor(t * 4) % 4];
+      this.shR.rotation.x = -1.2 - a; this.shL.rotation.x = -1.2 + a * 0.4;
+      this.shR.rotation.z = -0.05; this.shL.rotation.z = 0.05;
+      this.elbR.rotation.x = -1.1; this.elbL.rotation.x = -1.1;
+      this.torso.rotation.x = (a - 0.6) * 0.06;
+    }
+    this.mount.rotation.x = 0; this.mount.rotation.z = 0; this.mount.position.set(0.26, 1.42, -0.12);
+  }
+
+  update(dt, { speed = 0, grounded = true, pitch = 0, item = 0, recoilZ = 0, gliding = false, reloading = false, emote = -1 } = {}) {
+    const dancing = emote >= 0 && !gliding;
+    const showItem = dancing ? -1 : item; // empty hands while emoting
+    if (showItem !== this.item) {
+      this.weapons.forEach((w, i) => { w.visible = i === showItem; });
+      this.item = showItem;
     }
     this.glider.visible = gliding;
     this.reloadAnim = reloading ? (this.reloadAnim || 0) + dt : 0;
+
+    if (dancing) { this.emoteClock = (this.emoteClock || 0) + dt; this._dance(emote); return; }
+    this.emoteClock = 0;
 
     const k = Math.min(1, dt * 12);
     const amp = Math.min(1, speed / 6.8) * 0.6;
@@ -226,6 +266,7 @@ export class Avatar {
 
     // subtle run lean
     this.torso.rotation.x = grounded ? amp * 0.12 : 0.08;
+    this.torso.rotation.z = 0; // (emotes may have set this)
 
     // pickaxe swing arc
     if (this.swingT > 0) this.swingT = Math.max(0, this.swingT - dt);
