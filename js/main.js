@@ -1,8 +1,11 @@
 import { Game } from './game.js';
 import { Net } from './net.js';
 import { sfx } from './sfx.js';
+import { loadSettings, saveSettings, COLOR_SWATCHES, DEFAULT_BINDS, BIND_LABELS, keyName } from './settings.js';
 
 const $ = (id) => document.getElementById(id);
+
+let settings = loadSettings();
 
 const menu = $('menu');
 const hud = $('hud');
@@ -39,7 +42,8 @@ function startGame(roomCode) {
     badge.textContent = `ROOM ${roomCode} — share to invite (6 max)`;
     badge.classList.remove('hidden');
   }
-  game = new Game({ net, myName: myName(), container: document.body, roomCode });
+  game = new Game({ net, myName: myName(), container: document.body, roomCode,
+    myColor: settings.color, binds: settings.binds });
   window.__game = game; // debug/test handle
 
   if (net && !net.isHost) {
@@ -104,3 +108,67 @@ $('btnJoinGo').addEventListener('click', doJoin);
 codeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doJoin(); });
 
 $('btnBackMenu').addEventListener('click', () => location.reload());
+
+// ===================== settings page =====================
+const settingsEl = $('settings');
+const hex = (n) => '#' + n.toString(16).padStart(6, '0');
+
+function renderSettings() {
+  // color swatches
+  const sw = $('colorSwatches');
+  sw.innerHTML = '';
+  for (const col of COLOR_SWATCHES) {
+    const d = document.createElement('div');
+    d.className = 'swatch' + (col === settings.color ? ' sel' : '');
+    d.style.background = hex(col);
+    d.addEventListener('click', () => { settings.color = col; $('customColor').value = hex(col); saveSettings(settings); renderSettings(); });
+    sw.appendChild(d);
+  }
+  $('customColor').value = hex(settings.color);
+  // keybinds
+  const list = $('bindList');
+  list.innerHTML = '';
+  for (const action of Object.keys(DEFAULT_BINDS)) {
+    const row = document.createElement('div');
+    row.className = 'bind-row';
+    const label = document.createElement('span');
+    label.className = 'blabel';
+    label.textContent = BIND_LABELS[action];
+    const key = document.createElement('button');
+    key.className = 'bind-key';
+    key.textContent = keyName(settings.binds[action]);
+    key.addEventListener('click', () => startListening(action, key));
+    row.append(label, key);
+    list.appendChild(row);
+  }
+}
+
+let listening = null;
+function startListening(action, btn) {
+  if (listening) listening.btn.classList.remove('listening');
+  listening = { action, btn };
+  btn.classList.add('listening');
+  btn.textContent = 'press…';
+}
+window.addEventListener('keydown', (e) => {
+  if (!listening) return;
+  e.preventDefault();
+  if (e.code !== 'Escape') {
+    // free the key from any other action, then assign
+    for (const a of Object.keys(settings.binds)) if (settings.binds[a] === e.code) delete settings.binds[a];
+    settings.binds[listening.action] = e.code;
+    saveSettings(settings);
+  }
+  listening.btn.classList.remove('listening');
+  listening = null;
+  renderSettings();
+}, true);
+
+$('customColor').addEventListener('input', (e) => {
+  settings.color = parseInt(e.target.value.slice(1), 16);
+  saveSettings(settings);
+  renderSettings();
+});
+$('btnResetBinds').addEventListener('click', () => { settings.binds = { ...DEFAULT_BINDS }; saveSettings(settings); renderSettings(); });
+$('btnSettings').addEventListener('click', () => { renderSettings(); settingsEl.classList.remove('hidden'); });
+$('btnCloseSettings').addEventListener('click', () => settingsEl.classList.add('hidden'));

@@ -28,13 +28,14 @@ const BUS_TIME = 15;      // seconds for the bus to cross the island
 
 const COLORS = [0x4fc3f7, 0xff7043, 0x9ccc65, 0xffd54f, 0xba68c8, 0x4dd0e1];
 // storm phases: hold at r, then shrink to the next phase's r. dmg = HP/sec outside.
+// Long early holds so the match doesn't rush; the centre drifts randomly each shrink.
 const STORM_PHASES = [
-  { r: 360, hold: 22, shrink: 26, dmg: 1 },
-  { r: 230, hold: 18, shrink: 22, dmg: 2 },
-  { r: 140, hold: 16, shrink: 20, dmg: 4 },
-  { r: 80, hold: 14, shrink: 18, dmg: 6 },
-  { r: 38, hold: 12, shrink: 16, dmg: 9 },
-  { r: 14, hold: 999, shrink: 0, dmg: 13 },
+  { r: 390, hold: 55, shrink: 40, dmg: 1 },
+  { r: 250, hold: 45, shrink: 38, dmg: 2 },
+  { r: 160, hold: 38, shrink: 34, dmg: 3 },
+  { r: 95, hold: 32, shrink: 30, dmg: 5 },
+  { r: 48, hold: 28, shrink: 26, dmg: 7 },
+  { r: 18, hold: 999, shrink: 0, dmg: 10 },
 ];
 const BUS_FROM = new THREE.Vector3(-360, 150, -220);
 const BUS_TO = new THREE.Vector3(360, 150, 220);
@@ -152,12 +153,15 @@ function makeBus() {
 }
 
 export class Game {
-  constructor({ net, myName, container, roomCode }) {
+  constructor({ net, myName, container, roomCode, myColor, binds }) {
     this.net = net;
     this.myId = net ? net.myId : 0;
     this.myName = (myName || 'Player').slice(0, 12);
     this.over = false;
-    this.myColor = COLORS[this.myId % COLORS.length];
+    this.myColor = (typeof myColor === 'number') ? myColor : COLORS[this.myId % COLORS.length];
+    this.bind = binds || { forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD',
+      jump: 'Space', sprint: 'ShiftLeft', reload: 'KeyR', edit: 'KeyF',
+      w1: 'Digit1', w2: 'Digit2', w3: 'Digit3', w4: 'Digit4', wall: 'KeyZ', floor: 'KeyX', ramp: 'KeyC' };
     this.state = 'match'; // 'lobby' | 'match' | 'roundover' (net games start in lobby)
     this.myReady = false;
     this.lobbyAngle = 0;
@@ -235,6 +239,7 @@ export class Game {
     // --- other players & scores ---
     this.players = new Map(); // id -> remote player
     this.scores = new Map([[this.myId, { name: this.myName, kills: 0, wins: 0, ready: false, alive: false }]]);
+    this.colors = new Map([[this.myId, this.myColor]]); // per-player chosen colors
 
     if (net) {
       net.onMessage = (from, m) => this._handleMsg(from, m);
@@ -249,14 +254,14 @@ export class Game {
           net.sendTo(id, {
             t: 'welcome',
             roster: [...this.scores.entries()].map(([pid, s]) =>
-              [pid, s.name, s.wins, s.ready ? 1 : 0, s.alive ? 1 : 0]),
+              [pid, s.name, s.wins, s.ready ? 1 : 0, s.alive ? 1 : 0, this._playerColor(pid)]),
             state: this.state === 'match' ? 'match' : 'lobby',
             builds: this.state === 'match' ? this.builds.serialize() : [],
             zone: this.zone || null,
           });
         };
       }
-      net.send({ t: 'hello', name: this.myName, pv: PROTO });
+      net.send({ t: 'hello', name: this.myName, pv: PROTO, c: this.myColor });
     }
 
     // --- practice dummies ---
@@ -373,10 +378,12 @@ export class Game {
   }
 
   // ===================== players =====================
+  _playerColor(id) { return this.colors.get(id) ?? COLORS[id % COLORS.length]; }
+
   _getPlayer(id) {
     let p = this.players.get(id);
     if (p) return p;
-    const color = COLORS[id % COLORS.length];
+    const color = this._playerColor(id);
     const avatar = new Avatar(color);
     avatar.group.position.set(...SPAWNS[id % SPAWNS.length].pos);
     p = {
@@ -407,6 +414,24 @@ export class Game {
     this._refreshScores();
   }
 
+  // rebuild a remote player's avatar in their chosen colour (once, on join)
+  _setPlayerColor(id, color) {
+    if (id === this.myId || typeof color !== 'number' || this.colors.get(id) === color) return;
+    this.colors.set(id, color);
+    const p = this.players.get(id);
+    if (!p) return;
+    const pos = p.avatar.group.position.clone();
+    const ry = p.avatar.group.rotation.y;
+    this.scene.remove(p.avatar.group);
+    p.avatar = new Avatar(color);
+    p.color = color;
+    p.avatar.group.position.copy(pos);
+    p.avatar.group.rotation.y = ry;
+    p.avatar.group.visible = p.alive;
+    p.avatar.group.add(p.hpBar.sprite, p.label);
+    this.scene.add(p.avatar.group);
+  }
+
   _removePlayer(id) {
     const p = this.players.get(id);
     if (!p) return;
@@ -418,21 +443,29 @@ export class Game {
   }
 
   // ===================== input =====================
+  _action(code) { // map a key code to a bound action name
+    const b = this.bind;
+    for (const a in b) if (b[a] === code) return a;
+    return null;
+  }
+
   _bindInput() {
     this._onKeyDown = (e) => {
       if (!this._locked()) return;
       const k = e.code;
       this.keys[k] = true;
-      if (k === 'Digit1') this._selectWeapon(0);
-      if (k === 'Digit2') this._selectWeapon(1);
-      if (k === 'Digit3') this._selectWeapon(2);
-      if (k === 'Digit4') this._selectWeapon(3);
-      if (k === 'KeyZ' || k === 'KeyQ') this._selectBuild(0);
-      if (k === 'KeyX') this._selectBuild(1);
-      if (k === 'KeyC') this._selectBuild(2);
-      if (k === 'KeyR') this._startReload();
-      if (k === 'KeyF') this._tryEdit();
-      if (k === 'Space') e.preventDefault();
+      switch (this._action(k)) {
+        case 'w1': this._selectWeapon(0); break;
+        case 'w2': this._selectWeapon(1); break;
+        case 'w3': this._selectWeapon(2); break;
+        case 'w4': this._selectWeapon(3); break;
+        case 'wall': this._selectBuild(0); break;
+        case 'floor': this._selectBuild(1); break;
+        case 'ramp': this._selectBuild(2); break;
+        case 'reload': this._startReload(); break;
+        case 'edit': this._tryEdit(); break;
+        case 'jump': e.preventDefault(); break;
+      }
     };
     this._onKeyUp = (e) => { this.keys[e.code] = false; };
     this._onMouseMove = (e) => {
@@ -582,18 +615,18 @@ export class Game {
   _spectate(dt) {
     if (!this._locked()) return;
     let ix = 0, iz = 0;
-    if (this.keys['KeyW']) iz += 1;
-    if (this.keys['KeyS']) iz -= 1;
-    if (this.keys['KeyD']) ix += 1;
-    if (this.keys['KeyA']) ix -= 1;
+    if (this.keys[this.bind.forward]) iz += 1;
+    if (this.keys[this.bind.back]) iz -= 1;
+    if (this.keys[this.bind.right]) ix += 1;
+    if (this.keys[this.bind.left]) ix -= 1;
     const sp = 18;
     const look = new THREE.Vector3(
       -Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch),
       -Math.cos(this.yaw) * Math.cos(this.pitch));
     const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
     this.pos.addScaledVector(look, iz * sp * dt).addScaledVector(right, ix * sp * dt);
-    if (this.keys['Space']) this.pos.y += sp * dt;
-    if (this.keys['ShiftLeft'] || this.keys['ShiftRight']) this.pos.y -= sp * dt;
+    if (this.keys[this.bind.jump]) this.pos.y += sp * dt;
+    if (this.keys[this.bind.sprint]) this.pos.y -= sp * dt;
     this.pos.x = Math.max(-ARENA, Math.min(ARENA, this.pos.x));
     this.pos.z = Math.max(-ARENA, Math.min(ARENA, this.pos.z));
     this.pos.y = Math.max(terrainHeightAt(this.pos.x, this.pos.z) + 2, Math.min(200, this.pos.y));
@@ -635,7 +668,7 @@ export class Game {
     this._busAnim(dt);
     this.pos.copy(this.bus.position);
     this.pos.y -= 1.0;
-    if ((this.keys['Space'] && this._locked()) || t >= 1) this._dropFromBus();
+    if ((this.keys[this.bind.jump] && this._locked()) || t >= 1) this._dropFromBus();
   }
 
   _dropFromBus() {
@@ -651,17 +684,29 @@ export class Game {
   get gliding() { return this.phase === 'sky' && !this.grounded; }
 
   // ===================== storm / safe zone =====================
-  // host: pick a final centre on land and start the schedule
+  // host: start the schedule with a randomised starting centre
   _initZone() {
-    let fc = { x: 0, z: 0 };
-    for (const [x, z] of [[0, 0], [40, -40], [-22, -26], [20, 30], [-60, 40]]) {
-      if (terrainHeightAt(x, z) > WATER_LEVEL + 2) { fc = { x, z }; break; }
-    }
-    this.zoneCenter = fc;
-    this.zoneState = { idx: 0, mode: 'hold', t: 0 };
+    const c0 = this._randLandPoint(0, 0, 130);
+    const nc = this._randLandPoint(c0.x, c0.z, Math.max(0, STORM_PHASES[0].r - STORM_PHASES[1].r));
+    this.zoneState = { idx: 0, mode: 'hold', t: 0, cur: { ...c0 }, next: nc };
     const p = STORM_PHASES[0];
-    this.zone = { cx: fc.x, cz: fc.z, r: p.r, nr: STORM_PHASES[1].r, dmg: p.dmg, closing: false };
+    this.zone = { cx: c0.x, cz: c0.z, r: p.r, nr: STORM_PHASES[1].r,
+      ncx: nc.x, ncz: nc.z, dmg: p.dmg, closing: false };
     this.zoneSendT = 0;
+    this.roundCheckT = 1;
+  }
+
+  // a point on land near (ox,oz) within maxR, biased to dry ground
+  _randLandPoint(ox, oz, maxR) {
+    let best = { x: ox, z: oz };
+    for (let i = 0; i < 28; i++) {
+      const a = Math.random() * Math.PI * 2, rr = Math.random() * maxR;
+      const x = ox + Math.cos(a) * rr, z = oz + Math.sin(a) * rr;
+      if (Math.hypot(x, z) > ARENA - 30) continue;
+      if (terrainHeightAt(x, z) > WATER_LEVEL + 2) return { x, z };
+      best = { x, z };
+    }
+    return best;
   }
 
   _zoneTick(dt) { // host only
@@ -670,25 +715,38 @@ export class Game {
     const next = STORM_PHASES[st.idx + 1];
     st.t += dt;
     if (st.mode === 'hold') {
+      this.zone.cx = st.cur.x; this.zone.cz = st.cur.z;
       this.zone.r = cur.r;
       this.zone.closing = false;
       this.zone.dmg = cur.dmg;
       this.zone.nr = next ? next.r : cur.r;
+      this.zone.ncx = st.next.x; this.zone.ncz = st.next.z;
       if (st.t >= cur.hold && next) { st.mode = 'shrink'; st.t = 0; }
-    } else { // shrink toward next radius
+    } else { // shrink + drift toward the next circle
       const k = Math.min(1, st.t / cur.shrink);
       this.zone.r = cur.r + (next.r - cur.r) * k;
+      this.zone.cx = st.cur.x + (st.next.x - st.cur.x) * k;
+      this.zone.cz = st.cur.z + (st.next.z - st.cur.z) * k;
       this.zone.closing = true;
       this.zone.dmg = cur.dmg;
       this.zone.nr = next.r;
-      if (st.t >= cur.shrink) { st.idx++; st.mode = 'hold'; st.t = 0; }
+      if (st.t >= cur.shrink) {
+        st.idx++; st.mode = 'hold'; st.t = 0;
+        st.cur = { ...st.next };
+        const nn = STORM_PHASES[st.idx + 1];
+        st.next = nn ? this._randLandPoint(st.cur.x, st.cur.z, Math.max(0, STORM_PHASES[st.idx].r - nn.r)) : { ...st.cur };
+      }
     }
     this.zoneSendT -= dt;
     if (this.net && this.zoneSendT <= 0) {
       this.zoneSendT = 0.4;
-      this.net.send({ t: 'zone', cx: this.zone.cx, cz: this.zone.cz,
-        r: +this.zone.r.toFixed(1), nr: this.zone.nr, dmg: this.zone.dmg, closing: this.zone.closing ? 1 : 0 });
+      this.net.send({ t: 'zone', cx: +this.zone.cx.toFixed(1), cz: +this.zone.cz.toFixed(1),
+        r: +this.zone.r.toFixed(1), nr: this.zone.nr, ncx: +this.zone.ncx.toFixed(1), ncz: +this.zone.ncz.toFixed(1),
+        dmg: this.zone.dmg, closing: this.zone.closing ? 1 : 0 });
     }
+    // safety net: end the round even if a death message was missed
+    this.roundCheckT -= dt;
+    if (this.roundCheckT <= 0) { this.roundCheckT = 1; this._checkRound(); }
   }
 
   // all clients: damage self when outside the circle, update wall + warning
@@ -740,18 +798,19 @@ export class Game {
       // current safe circle
       c.beginPath(); c.arc(toX(this.zone.cx), toY(this.zone.cz), this.zone.r * scale, 0, 7);
       c.lineWidth = 2; c.strokeStyle = '#ffffff'; c.stroke();
-      // next safe circle (dashed)
+      // next safe circle (dashed) at its drifting centre
       if (this.zone.nr < this.zone.r) {
         c.setLineDash([4, 4]); c.beginPath();
-        c.arc(toX(this.zone.cx), toY(this.zone.cz), this.zone.nr * scale, 0, 7);
+        c.arc(toX(this.zone.ncx ?? this.zone.cx), toY(this.zone.ncz ?? this.zone.cz), this.zone.nr * scale, 0, 7);
         c.strokeStyle = '#c9a6ff'; c.stroke(); c.setLineDash([]);
       }
     }
-    // self arrow
+    // self arrow — points the way the player faces (forward at yaw=0 is up)
     const sx = toX(this.pos.x), sy = toY(this.pos.z);
-    c.save(); c.translate(sx, sy); c.rotate(this.yaw);
+    c.save(); c.translate(sx, sy); c.rotate(-this.yaw);
     c.beginPath(); c.moveTo(0, -6); c.lineTo(4, 5); c.lineTo(-4, 5); c.closePath();
-    c.fillStyle = '#4fc3f7'; c.fill(); c.lineWidth = 1.2; c.strokeStyle = '#06304a'; c.stroke();
+    c.fillStyle = '#' + this.myColor.toString(16).padStart(6, '0'); c.fill();
+    c.lineWidth = 1.2; c.strokeStyle = '#06304a'; c.stroke();
     c.restore();
   }
 
@@ -767,10 +826,10 @@ export class Game {
 
     let ix = 0, iz = 0;
     if (this._locked()) {
-      if (this.keys['KeyW']) iz += 1;
-      if (this.keys['KeyS']) iz -= 1;
-      if (this.keys['KeyD']) ix += 1;
-      if (this.keys['KeyA']) ix -= 1;
+      if (this.keys[this.bind.forward]) iz += 1;
+      if (this.keys[this.bind.back]) iz -= 1;
+      if (this.keys[this.bind.right]) ix += 1;
+      if (this.keys[this.bind.left]) ix -= 1;
     }
     const len = Math.hypot(ix, iz) || 1;
     ix /= len; iz /= len;
@@ -782,8 +841,8 @@ export class Game {
     const wasSwimming = this.swimming;
     this.swimming = swimming;
 
-    const up = this.keys['Space'];
-    const down = this.keys['ShiftLeft'] || this.keys['ShiftRight'];
+    const up = this.keys[this.bind.jump];
+    const down = this.keys[this.bind.sprint];
 
     // sprint: hold Shift while moving on land (Shift still dives in air/water).
     // grounded isn't required — terrain micro-bumps would otherwise flicker it.
@@ -831,6 +890,11 @@ export class Game {
       this.pos.y = gy;
       this.vel.y = 0;
       if (!swimming) this.grounded = true;
+    } else if (wasGrounded && !swimming && this.vel.y <= 0 && (this.pos.y - gy) < 1.6) {
+      // stick to downhill slopes instead of going airborne — smooths walking
+      this.pos.y = gy;
+      this.vel.y = 0;
+      this.grounded = true;
     }
 
     // building / prop / build-piece box landing + head-bump
@@ -1355,6 +1419,7 @@ export class Game {
 
   _startMatch() {
     this.state = 'match';
+    sfx.musicStop(); // stop lobby music when the round begins
     this.builds.clearAll();
     for (const s of this.scores.values()) { s.kills = 0; s.alive = true; }
     for (const p of this.players.values()) {
@@ -1430,6 +1495,7 @@ export class Game {
     this.busT = 0;
     this.bus.visible = false;
     sfx.busStop();
+    sfx.musicStart(); // lobby music
     this.zone = null; this.zoneState = null; this.stormWall.visible = false;
     this.builds.clearAll();
     for (const s of this.scores.values()) { s.alive = false; s.kills = 0; }
@@ -1462,7 +1528,7 @@ export class Game {
     const rows = [...this.scores.entries()]
       .sort((a, b) => a[0] - b[0])
       .map(([id, s]) => {
-        const color = '#' + COLORS[id % COLORS.length].toString(16).padStart(6, '0');
+        const color = '#' + this._playerColor(id).toString(16).padStart(6, '0');
         const me = id === this.myId;
         return `<div class="lobby-row${s.ready ? ' ready' : ''}">` +
           `<span class="dot" style="background:${color}"></span>` +
@@ -1621,6 +1687,7 @@ export class Game {
     switch (m.t) {
       case 'hello':
         this._setPlayerName(from, (m.name || 'Player').slice(0, 12));
+        this._setPlayerColor(from, m.c);
         if (m.pv !== PROTO) {
           this._feed(`⚠ ${(m.name || 'A player')} has an old game version — ask them to hard-refresh (Ctrl+F5)`);
         }
@@ -1628,9 +1695,10 @@ export class Game {
         this._maybeStart();
         break;
       case 'welcome': {
-        for (const [pid, name, wins, ready, alive] of m.roster || []) {
+        for (const [pid, name, wins, ready, alive, color] of m.roster || []) {
           if (pid === this.myId) continue;
           this._setPlayerName(pid, name);
+          this._setPlayerColor(pid, color);
           const s = this.scores.get(pid);
           if (s) { s.wins = wins || 0; s.ready = !!ready; s.alive = !!alive; }
         }
@@ -1733,7 +1801,8 @@ export class Game {
         break;
       case 'zone': // guests receive the storm state from the host
         if (!this.net.isHost) {
-          this.zone = { cx: m.cx, cz: m.cz, r: m.r, nr: m.nr, dmg: m.dmg, closing: !!m.closing };
+          this.zone = { cx: m.cx, cz: m.cz, r: m.r, nr: m.nr,
+            ncx: m.ncx ?? m.cx, ncz: m.ncz ?? m.cz, dmg: m.dmg, closing: !!m.closing };
         }
         break;
     }
@@ -1780,7 +1849,7 @@ export class Game {
       .sort((a, b) => (b[1].wins - a[1].wins) || (b[1].kills - a[1].kills))
       .map(([id, s]) => {
         const me = id === this.myId;
-        const color = '#' + COLORS[id % COLORS.length].toString(16).padStart(6, '0');
+        const color = '#' + this._playerColor(id).toString(16).padStart(6, '0');
         const dead = inMatch && !s.alive ? ' 💀' : '';
         return `<div class="score-row${me ? ' me' : ''}">` +
           `<span class="dot" style="background:${color}"></span>` +

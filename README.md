@@ -6,6 +6,7 @@ A browser-based third-person build-fight battle royale set on a huge **840m lush
 
 **▶ [Play it now](https://chezburgar.github.io/1v1-battle/)** — then:
 
+- **Settings** — rebind keys and pick your character color (saved in your browser)
 - **Practice** — solo arena with target dummies (respawns on)
 - **Create Game** — generates a 4-letter room code; share it with up to 5 friends
 - **Join Game** — enter a room code; if a round is running you spectate until the next one
@@ -37,7 +38,7 @@ Builds snap to a grid, have HP, and can be shot down. Hold left click in build m
 
 **The island:** terrain is a real heightmap you walk and fight across — climb hills, take cover in forests, hold the high ground. **Sprint** with `Shift`. Deep water lets you **swim** (buoyancy floats you to the surface; `Space`/`Shift` to surface or dive, screen tints underwater). **Every building is enterable** through its doorway.
 
-**The storm:** online rounds have a Fortnite-style shrinking safe zone — a **minimap** (top-right) shows the current and next circle. Get caught outside and the storm chips your health (faster each phase), forcing everyone together so rounds always come to an end.
+**The storm:** online rounds have a Fortnite-style shrinking safe zone with a **randomly drifting** centre — a **minimap** (top-right) shows the current and next circle and the way you're facing. Get caught outside and the storm chips your health (slowly at first, faster each phase), forcing everyone together so rounds always come to an end. Health also **regenerates** after a few seconds out of combat.
 
 ## 🔌 Connection troubleshooting
 

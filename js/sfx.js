@@ -45,9 +45,64 @@ function tone(freq, vol, dur, type = 'square') {
 }
 
 let busNodes = null;
+let music = null;
 
 export const sfx = {
   unlock() { ac(); }, // call on first user gesture
+  // gentle ambient lobby loop — slow chord pad + soft arpeggio, fully synthesized
+  musicStart() {
+    if (music) return;
+    let c;
+    try { c = ac(); } catch (e) { return; }
+    const master = c.createGain();
+    master.gain.value = 0;
+    master.gain.linearRampToValueAtTime(0.16, c.currentTime + 2);
+    master.connect(c.destination);
+    // chords (root-relative semitone sets), cycled slowly
+    const chords = [[0, 4, 7, 11], [-3, 0, 4, 9], [-5, -1, 2, 7], [2, 5, 9, 12]];
+    const midi = (n) => 220 * Math.pow(2, n / 12);
+    let i = 0;
+    const playChord = () => {
+      if (!music) return;
+      const set = chords[i % chords.length]; i++;
+      const dur = 4.2;
+      set.forEach((n, k) => {
+        const o = c.createOscillator(); o.type = k === 0 ? 'sine' : 'triangle';
+        o.frequency.value = midi(n) / (k === 0 ? 2 : 1);
+        o.detune.value = (Math.random() - 0.5) * 6;
+        const g = c.createGain(); g.gain.value = 0;
+        g.gain.linearRampToValueAtTime(0.09, c.currentTime + 1.2);
+        g.gain.linearRampToValueAtTime(0.0001, c.currentTime + dur);
+        o.connect(g); g.connect(master); o.start(); o.stop(c.currentTime + dur + 0.1);
+      });
+      // soft arpeggio sparkle
+      set.forEach((n, k) => {
+        const o = c.createOscillator(); o.type = 'sine';
+        o.frequency.value = midi(n + 12);
+        const g = c.createGain(); g.gain.value = 0;
+        const t0 = c.currentTime + 0.4 + k * 0.45;
+        g.gain.setValueAtTime(0, t0);
+        g.gain.linearRampToValueAtTime(0.05, t0 + 0.05);
+        g.gain.exponentialRampToValueAtTime(0.0008, t0 + 0.9);
+        o.connect(g); g.connect(master); o.start(t0); o.stop(t0 + 1);
+      });
+    };
+    playChord();
+    const timer = setInterval(playChord, 4000);
+    music = { master, timer, c };
+  },
+  musicStop() {
+    if (!music) return;
+    const { master, timer, c } = music;
+    music = null;
+    clearInterval(timer);
+    try {
+      master.gain.cancelScheduledValues(c.currentTime);
+      master.gain.setValueAtTime(master.gain.value, c.currentTime);
+      master.gain.linearRampToValueAtTime(0, c.currentTime + 1);
+      setTimeout(() => master.disconnect(), 1200);
+    } catch (e) { /* already gone */ }
+  },
   busStart() {
     if (busNodes) return;
     try {

@@ -30,6 +30,7 @@
         <button id="btnPractice" class="btn btn-alt">🎯 PRACTICE</button>
         <button id="btnCreate" class="btn btn-main">⚔️ CREATE GAME</button>
         <button id="btnJoin" class="btn btn-main">🔗 JOIN GAME</button>
+        <button id="btnSettings" class="btn btn-ghost">⚙️ SETTINGS</button>
       </div>
 
       <div id="joinRow" class="join-row hidden">
@@ -43,6 +44,25 @@
         <div><b>WASD</b> move &middot; <b>SHIFT</b> sprint &middot; <b>SPACE</b> jump / drop / swim up &middot; <b>LMB</b> shoot / place &middot; <b>RMB</b> aim</div>
         <div><b>1 2 3</b> weapons &middot; <b>4</b> pickaxe &middot; <b>Z</b> wall &middot; <b>X</b> floor &middot; <b>C</b> ramp &middot; <b>F</b> edit &middot; <b>R</b> reload &middot; <b>WHEEL</b> cycle</div>
         <div>Up to <b>6 players</b> &middot; a closing storm forces the fight to an end</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== SETTINGS ===== -->
+  <div id="settings" class="screen overlay hidden">
+    <div class="settings-box">
+      <h2>⚙️ Settings</h2>
+      <h3>Character color</h3>
+      <div id="colorSwatches" class="swatches"></div>
+      <div class="custom-color">
+        <label for="customColor">Custom</label>
+        <input id="customColor" type="color" value="#4fc3f7" />
+      </div>
+      <h3>Keybinds <span class="hint">(click, then press a key)</span></h3>
+      <div id="bindList" class="bind-list"></div>
+      <div class="settings-actions">
+        <button id="btnResetBinds" class="btn btn-ghost">Reset</button>
+        <button id="btnCloseSettings" class="btn btn-main">DONE</button>
       </div>
     </div>
   </div>

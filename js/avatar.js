@@ -11,15 +11,20 @@ export class Avatar {
     this.swingT = 0;
 
     const c = new THREE.Color(color);
-    const team     = new THREE.MeshStandardMaterial({ color, roughness: 0.6 });
-    const teamDark = new THREE.MeshStandardMaterial({ color: c.clone().multiplyScalar(0.55), roughness: 0.7 });
-    const pants    = new THREE.MeshStandardMaterial({ color: 0x2e3440, roughness: 0.75 });
-    const dark     = new THREE.MeshStandardMaterial({ color: 0x1d2128, roughness: 0.6 });
-    const skin     = new THREE.MeshStandardMaterial({ color: 0xd9a886, roughness: 0.65 });
-    const hair     = new THREE.MeshStandardMaterial({ color: 0x3a2c20, roughness: 0.9 });
-    const white    = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.4 });
-    const sole     = new THREE.MeshStandardMaterial({ color: 0x4a4f58, roughness: 0.8 });
-    const metal    = new THREE.MeshStandardMaterial({ color: 0x9aa3b0, roughness: 0.35, metalness: 0.6 });
+    const team     = new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0.1 });
+    const teamDark = new THREE.MeshStandardMaterial({ color: c.clone().multiplyScalar(0.5), roughness: 0.65 });
+    const teamLite = new THREE.MeshStandardMaterial({ color: c.clone().lerp(new THREE.Color(0xffffff), 0.25), roughness: 0.5 });
+    const armor    = new THREE.MeshStandardMaterial({ color: c.clone().multiplyScalar(0.8), roughness: 0.35, metalness: 0.5 });
+    const pants    = new THREE.MeshStandardMaterial({ color: 0x2b3038, roughness: 0.8 });
+    const dark     = new THREE.MeshStandardMaterial({ color: 0x191c22, roughness: 0.6 });
+    const rubber   = new THREE.MeshStandardMaterial({ color: 0x14161b, roughness: 0.9 });
+    const skin     = new THREE.MeshStandardMaterial({ color: 0xd9a886, roughness: 0.7 });
+    const hair     = new THREE.MeshStandardMaterial({ color: 0x39291d, roughness: 0.95 });
+    const white    = new THREE.MeshStandardMaterial({ color: 0xf4f4f4, roughness: 0.35 });
+    const iris     = new THREE.MeshStandardMaterial({ color: 0x4a6a8a, roughness: 0.4 });
+    const sole     = new THREE.MeshStandardMaterial({ color: 0x3a3f47, roughness: 0.85 });
+    const metal    = new THREE.MeshStandardMaterial({ color: 0xaab2bd, roughness: 0.3, metalness: 0.7 });
+    const visorM   = new THREE.MeshStandardMaterial({ color: 0x0e1218, roughness: 0.15, metalness: 0.5 });
 
     const add = (parent, geo, mat, x, y, z) => {
       const m = new THREE.Mesh(geo, mat);
@@ -28,81 +33,116 @@ export class Avatar {
       parent.add(m);
       return m;
     };
-    const capsule = (r, len) => new THREE.CapsuleGeometry(r, len, 6, 14);
+    const capsule = (r, len, seg = 5) => new THREE.CapsuleGeometry(r, len, seg, 12);
+    const rbox = (w, h, d, r = 0.02) => new THREE.BoxGeometry(w, h, d); // (rounded look comes from bevel meshes)
 
-    // ----- legs: hip joint -> thigh -> knee joint -> shin, knee pad, boot -----
+    // ----- legs: hip -> thigh + armor -> knee -> shin guard + detailed boot -----
     this.hipL = new THREE.Group(); this.hipL.position.set(-0.12, 0.96, 0);
     this.hipR = new THREE.Group(); this.hipR.position.set(0.12, 0.96, 0);
     this.kneeL = new THREE.Group(); this.kneeR = new THREE.Group();
     for (const [hip, knee] of [[this.hipL, this.kneeL], [this.hipR, this.kneeR]]) {
-      add(hip, capsule(0.105, 0.28), pants, 0, -0.24, 0);
-      add(hip, new THREE.BoxGeometry(0.06, 0.3, 0.215), teamDark, -0.06 * Math.sign(hip.position.x), -0.22, 0); // side stripe
+      const side = Math.sign(hip.position.x) || 1;
+      add(hip, capsule(0.11, 0.3), pants, 0, -0.24, 0);                                  // thigh
+      add(hip, rbox(0.13, 0.22, 0.1), armor, 0, -0.18, -0.07);                           // thigh plate
+      add(hip, rbox(0.05, 0.16, 0.13), teamDark, side * 0.085, -0.2, 0);                 // side cargo pocket
       knee.position.set(0, -0.48, 0);
-      add(knee, new THREE.SphereGeometry(0.08, 10, 8), dark, 0, -0.02, -0.05); // knee pad
-      add(knee, capsule(0.085, 0.28), pants, 0, -0.22, 0);
-      const boot = add(knee, new THREE.BoxGeometry(0.18, 0.13, 0.32), dark, 0, -0.41, -0.05);
-      add(knee, new THREE.BoxGeometry(0.19, 0.05, 0.34), sole, 0, -0.5, -0.05);
-      boot.castShadow = true;
+      add(knee, capsule(0.09, 0.3), pants, 0, -0.22, 0);                                  // shin
+      const kp = add(knee, new THREE.SphereGeometry(0.085, 10, 8), armor, 0, -0.02, -0.06); // knee pad
+      kp.scale.set(1, 1.1, 0.8);
+      add(knee, rbox(0.11, 0.18, 0.04), dark, 0, -0.2, -0.085);                          // shin guard
+      // boot: ankle cuff, foot, toe cap, heel, sole
+      add(knee, new THREE.CylinderGeometry(0.085, 0.075, 0.1, 10), dark, 0, -0.37, 0);    // ankle
+      add(knee, rbox(0.15, 0.12, 0.26), dark, 0, -0.45, -0.04);                           // foot
+      add(knee, rbox(0.16, 0.08, 0.1), rubber, 0, -0.47, -0.18);                          // toe cap
+      add(knee, rbox(0.16, 0.05, 0.32), sole, 0, -0.51, -0.04);                           // sole
+      add(knee, rbox(0.15, 0.06, 0.06), sole, 0, -0.49, 0.11);                            // heel
       hip.add(knee);
       this.group.add(hip);
     }
 
-    // ----- torso: jacket, collar, zipper, chest rig, belt, backpack -----
+    // ----- torso: layered jacket, chest armor, pauldrons, rig, belt, backpack -----
     this.torso = new THREE.Group();
     this.torso.position.y = 0.98;
-    add(this.torso, new THREE.CylinderGeometry(0.24, 0.19, 0.56, 16), team, 0, 0.32, 0);
-    add(this.torso, new THREE.CylinderGeometry(0.105, 0.125, 0.07, 12), teamDark, 0, 0.585, 0); // collar
-    add(this.torso, new THREE.BoxGeometry(0.025, 0.46, 0.012), dark, 0, 0.33, -0.218);          // zipper
-    add(this.torso, new THREE.CylinderGeometry(0.17, 0.15, 0.16, 12), pants, 0, 0.02, 0);       // pelvis
-    add(this.torso, new THREE.SphereGeometry(0.09, 12, 10), team, -0.235, 0.55, 0);             // shoulders
-    add(this.torso, new THREE.SphereGeometry(0.09, 12, 10), team, 0.235, 0.55, 0);
-    const strap = add(this.torso, new THREE.BoxGeometry(0.06, 0.5, 0.015), dark, -0.07, 0.36, -0.215);
-    strap.rotation.z = 0.35; // sling strap
-    add(this.torso, new THREE.BoxGeometry(0.1, 0.11, 0.05), dark, -0.1, 0.2, -0.215);  // pouches
-    add(this.torso, new THREE.BoxGeometry(0.1, 0.09, 0.05), dark, 0.1, 0.21, -0.21);
-    add(this.torso, new THREE.CylinderGeometry(0.178, 0.158, 0.07, 14), dark, 0, 0.045, 0); // belt
-    add(this.torso, new THREE.BoxGeometry(0.07, 0.05, 0.02), metal, 0, 0.045, -0.175);      // buckle
-    add(this.torso, new THREE.BoxGeometry(0.3, 0.36, 0.15), teamDark, 0, 0.32, 0.245);      // backpack
-    add(this.torso, new THREE.BoxGeometry(0.31, 0.08, 0.16), dark, 0, 0.45, 0.245);         // pack flap
+    add(this.torso, new THREE.CylinderGeometry(0.245, 0.2, 0.56, 18), team, 0, 0.32, 0);  // jacket
+    const chest = add(this.torso, rbox(0.4, 0.34, 0.14), armor, 0, 0.4, -0.14);            // chest armor plate
+    chest.scale.set(1, 1, 1);
+    add(this.torso, rbox(0.34, 0.12, 0.12), armor, 0, 0.18, -0.16);                        // ab plate
+    add(this.torso, rbox(0.3, 0.1, 0.11), teamDark, 0, 0.06, -0.16);                       // lower plate
+    add(this.torso, new THREE.CylinderGeometry(0.11, 0.135, 0.09, 14), teamDark, 0, 0.59, 0); // collar
+    add(this.torso, new THREE.CylinderGeometry(0.175, 0.155, 0.18, 14), pants, 0, 0.02, 0);   // pelvis
+    // pauldrons (rounded shoulder armor)
+    for (const s of [-1, 1]) {
+      const p = add(this.torso, new THREE.SphereGeometry(0.115, 12, 10), armor, s * 0.245, 0.55, 0);
+      p.scale.set(1.1, 0.8, 1.1);
+    }
+    // chest rig straps (X) + pouches
+    for (const s of [-1, 1]) {
+      const st = add(this.torso, rbox(0.05, 0.55, 0.02), dark, s * 0.08, 0.36, -0.21);
+      st.rotation.z = s * 0.32;
+    }
+    add(this.torso, rbox(0.11, 0.12, 0.06), dark, -0.11, 0.2, -0.215);                     // pouch L
+    add(this.torso, rbox(0.11, 0.1, 0.06), dark, 0.11, 0.22, -0.21);                       // pouch R
+    add(this.torso, rbox(0.08, 0.1, 0.05), teamDark, 0, 0.42, -0.225);                     // chest badge
+    // belt + buckle + holster
+    add(this.torso, new THREE.CylinderGeometry(0.18, 0.16, 0.08, 16), dark, 0, 0.04, 0);
+    add(this.torso, rbox(0.08, 0.06, 0.03), metal, 0, 0.04, -0.18);                        // buckle
+    add(this.torso, rbox(0.09, 0.16, 0.07), rubber, 0.17, -0.02, 0.02);                    // hip holster
+    // backpack with pockets, straps, top handle
+    add(this.torso, rbox(0.32, 0.4, 0.17), teamDark, 0, 0.34, 0.25);
+    add(this.torso, rbox(0.34, 0.1, 0.18), dark, 0, 0.48, 0.25);                           // top lid
+    add(this.torso, rbox(0.12, 0.14, 0.06), dark, 0, 0.28, 0.345);                         // front pocket
+    add(this.torso, new THREE.TorusGeometry(0.04, 0.012, 6, 10), metal, 0, 0.55, 0.25);    // handle
     this.group.add(this.torso);
 
-    // ----- head: face with eyes/brows/mouth, hair, headphones -----
+    // ----- head: skull, hair, ears, eyes, brows, nose, mouth, headset -----
     this.head = new THREE.Group();
     this.head.position.y = 1.6;
-    add(this.head, new THREE.CylinderGeometry(0.06, 0.07, 0.1, 10), skin, 0, 0.0, 0);
-    const skull = add(this.head, new THREE.SphereGeometry(0.155, 18, 14), skin, 0, 0.16, 0);
-    skull.scale.set(1, 1.08, 1.02);
+    add(this.head, new THREE.CylinderGeometry(0.062, 0.08, 0.11, 12), skin, 0, 0.01, 0);   // neck
+    const skull = add(this.head, new THREE.SphereGeometry(0.155, 20, 16), skin, 0, 0.16, 0);
+    skull.scale.set(0.97, 1.1, 1.02);
     skull.name = 'head';
-    const hairCap = add(this.head, new THREE.SphereGeometry(0.163, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.58), hair, 0, 0.165, 0.012);
-    hairCap.rotation.x = -0.18; // fringe forward
-    hairCap.name = 'head';
-    const hairBack = add(this.head, new THREE.SphereGeometry(0.15, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), hair, 0, 0.13, 0.045);
-    hairBack.rotation.x = Math.PI * 0.55;
-    hairBack.name = 'head';
+    const jaw = add(this.head, rbox(0.2, 0.12, 0.2), skin, 0, 0.085, 0.01);                // jaw
+    jaw.name = 'head';
+    const hairCap = add(this.head, new THREE.SphereGeometry(0.165, 18, 14, 0, Math.PI * 2, 0, Math.PI * 0.62), hair, 0, 0.165, 0.008);
+    hairCap.rotation.x = -0.16; hairCap.name = 'head';
+    const hairBack = add(this.head, new THREE.SphereGeometry(0.152, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), hair, 0, 0.14, 0.05);
+    hairBack.rotation.x = Math.PI * 0.5; hairBack.name = 'head';
     for (const s of [-1, 1]) {
-      add(this.head, new THREE.SphereGeometry(0.031, 8, 8), white, s * 0.062, 0.175, -0.132);  // eye
-      add(this.head, new THREE.SphereGeometry(0.0145, 6, 6), dark, s * 0.062, 0.175, -0.156);  // pupil
-      const brow = add(this.head, new THREE.BoxGeometry(0.052, 0.013, 0.012), hair, s * 0.062, 0.222, -0.143);
-      brow.rotation.z = s * -0.12;
-      const cup = add(this.head, new THREE.CylinderGeometry(0.047, 0.047, 0.035, 10), teamDark, s * 0.158, 0.165, 0); // headphone cup
+      add(this.head, new THREE.SphereGeometry(0.034, 10, 8), white, s * 0.06, 0.175, -0.13);  // eye white
+      add(this.head, new THREE.SphereGeometry(0.018, 8, 8), iris, s * 0.066, 0.175, -0.152);  // iris
+      add(this.head, new THREE.SphereGeometry(0.009, 6, 6), dark, s * 0.068, 0.175, -0.162);  // pupil
+      const brow = add(this.head, rbox(0.056, 0.014, 0.014), hair, s * 0.062, 0.223, -0.142);
+      brow.rotation.z = s * -0.1;
+      add(this.head, new THREE.SphereGeometry(0.028, 8, 8), skin, s * 0.16, 0.15, 0.0);        // ear
+      // headset: cup + pad
+      const cup = add(this.head, new THREE.CylinderGeometry(0.05, 0.05, 0.04, 12), teamDark, s * 0.165, 0.16, 0);
       cup.rotation.z = Math.PI / 2;
+      add(this.head, new THREE.CylinderGeometry(0.03, 0.03, 0.045, 8), dark, s * 0.18, 0.16, 0).rotation.z = Math.PI / 2;
     }
-    add(this.head, new THREE.TorusGeometry(0.158, 0.018, 6, 14, Math.PI), teamDark, 0, 0.17, 0); // headphone band (XY arc over the top)
-    add(this.head, new THREE.BoxGeometry(0.055, 0.014, 0.012),
-      new THREE.MeshStandardMaterial({ color: 0xb07a5e, roughness: 0.7 }), 0, 0.09, -0.148); // mouth
-    add(this.head, new THREE.BoxGeometry(0.03, 0.045, 0.03), skin, 0, 0.145, -0.155); // nose
+    add(this.head, new THREE.TorusGeometry(0.162, 0.02, 6, 16, Math.PI), teamDark, 0, 0.18, 0); // headset band
+    // mic boom from the left cup
+    const mic = add(this.head, rbox(0.012, 0.012, 0.13), dark, -0.13, 0.13, -0.06);
+    mic.rotation.x = 0.5;
+    add(this.head, new THREE.SphereGeometry(0.016, 6, 6), dark, -0.115, 0.11, -0.13);
+    add(this.head, rbox(0.07, 0.018, 0.016),
+      new THREE.MeshStandardMaterial({ color: 0xb07a5e, roughness: 0.7 }), 0, 0.092, -0.146);  // mouth
+    const nose = add(this.head, rbox(0.034, 0.05, 0.04), skin, 0, 0.142, -0.155); nose.name = 'head'; // nose
     this.group.add(this.head);
 
-    // ----- arms: shoulder joint -> upper arm -> elbow joint -> forearm, glove -----
-    this.shL = new THREE.Group(); this.shL.position.set(-0.24, 1.5, 0);
-    this.shR = new THREE.Group(); this.shR.position.set(0.24, 1.5, 0);
+    // ----- arms: pauldron cap -> upper arm -> elbow pad -> forearm guard -> glove -----
+    this.shL = new THREE.Group(); this.shL.position.set(-0.245, 1.5, 0);
+    this.shR = new THREE.Group(); this.shR.position.set(0.245, 1.5, 0);
     this.elbL = new THREE.Group(); this.elbR = new THREE.Group();
     for (const [sh, elb] of [[this.shL, this.elbL], [this.shR, this.elbR]]) {
-      add(sh, capsule(0.075, 0.18), team, 0, -0.15, 0);
-      elb.position.set(0, -0.29, 0);
-      add(elb, capsule(0.063, 0.18), skin, 0, -0.14, 0);
-      add(elb, new THREE.CylinderGeometry(0.066, 0.06, 0.05, 10), dark, 0, -0.235, 0); // wrist band
-      add(elb, new THREE.SphereGeometry(0.07, 10, 8), dark, 0, -0.29, 0);              // glove
+      add(sh, capsule(0.078, 0.2), team, 0, -0.15, 0);                                     // upper arm
+      add(sh, rbox(0.1, 0.1, 0.13), armor, 0, -0.05, 0);                                   // shoulder cap
+      elb.position.set(0, -0.3, 0);
+      add(elb, capsule(0.066, 0.2), team, 0, -0.14, 0);                                    // forearm sleeve
+      add(elb, new THREE.SphereGeometry(0.07, 10, 8), armor, 0, 0.0, 0).scale.set(1, 0.8, 1); // elbow pad
+      add(elb, rbox(0.1, 0.16, 0.09), dark, 0, -0.13, 0);                                  // forearm guard
+      add(elb, new THREE.CylinderGeometry(0.068, 0.062, 0.05, 10), rubber, 0, -0.245, 0);  // wrist cuff
+      add(elb, new THREE.SphereGeometry(0.072, 10, 8), rubber, 0, -0.3, 0);                // glove
+      add(elb, rbox(0.08, 0.04, 0.06), dark, 0, -0.3, -0.04);                              // knuckle plate
       sh.add(elb);
       this.group.add(sh);
     }

@@ -136,7 +136,7 @@ function doorSteps(b, door, w, d) {
 // Hollow rectangular room: solid flat foundation (terrain never pokes through),
 // 4 walls with a doorway, a door stoop, and windows.
 function room(b, o) {
-  const { w, d, h, wall, floor = 0x8a8178, windows = true } = o;
+  const { w, d, h, wall, floor = 0x6f6a62, windows = true } = o;
   const door = o.door || b.doorSide || 'south'; // uphill side unless the type forces one
   const x0 = -w / 2, x1 = w / 2, z0 = -d / 2, z1 = d / 2;
   const wopt = { rough: 0.88 };
@@ -411,17 +411,19 @@ export function buildBuildings(scene, staticMeshes, grid, ctx, footprints = []) 
     for (const c of placedCenters) {
       if (Math.hypot(worldX - c.x, worldZ - c.z) < Math.max(minGap, c.gap)) return;
     }
-    // sample footprint corners: floor at the HIGHEST so terrain never pokes through;
-    // foundation pad fills down past the LOWEST
-    const sr = 5;
+    // sample the FULL footprint (incl. all four corners) so the foundation reaches
+    // the true lowest corner — otherwise big buildings float on slopes
+    const sr = 7.5;
     const hs = [];
-    for (const [ox, oz] of [[0, 0], [sr, 0], [-sr, 0], [0, sr], [0, -sr], [sr, sr], [-sr, -sr]]) {
+    for (const [ox, oz] of [[0, 0], [sr, 0], [-sr, 0], [0, sr], [0, -sr],
+      [sr, sr], [-sr, -sr], [sr, -sr], [-sr, sr]]) {
       hs.push(heightAt(worldX + ox, worldZ + oz));
     }
     const cmin = Math.min(...hs), cmax = Math.max(...hs);
+    if (cmax - cmin > 11) return; // too steep to sit cleanly — leave a gap, not a tower
     const baseY = Math.max(cmax, WATER_LEVEL + 0.5);
     const b = makeBuilder(scene, staticMeshes, grid, worldX, baseY, worldZ);
-    b.padDepth = (baseY - cmin) + 0.6;
+    b.padDepth = (baseY - cmin) + 1.0; // reach safely below the lowest corner
     // face the doorway uphill (toward the highest neighbour) so the entry stoop
     // stays small instead of becoming a tall staircase on the downhill side
     const dirs = [['south', heightAt(worldX, worldZ + sr)], ['north', heightAt(worldX, worldZ - sr)],
