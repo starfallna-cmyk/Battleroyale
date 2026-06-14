@@ -64,7 +64,12 @@ function makeAR() {
   g.add(box(0.085, 0.12, 0.6, GUNMETAL, 0, 0, -0.18));        // receiver
   g.add(box(0.05, 0.022, 0.55, DARK, 0, 0.075, -0.22));        // top rail
   g.add(box(0.012, 0.05, 0.012, DARK, 0, 0.11, -0.72));        // front sight post
-  g.add(box(0.05, 0.045, 0.04, DARK, 0, 0.105, -0.04));        // rear sight
+  // red-dot optic mounted on the rail
+  g.add(box(0.07, 0.05, 0.09, DARK, 0, 0.115, -0.12));         // sight housing base
+  g.add(box(0.075, 0.02, 0.095, GUNMETAL, 0, 0.15, -0.12));    // hood top
+  g.add(cyl(0.032, 0.012, LENS, 0, 0.125, -0.08));             // glass lens (faces shooter)
+  g.add(new THREE.Mesh(new THREE.SphereGeometry(0.009, 8, 8),
+    new THREE.MeshStandardMaterial({ color: 0xff2a2a, emissive: 0xff1a1a, emissiveIntensity: 2.2 }))).position.set(0, 0.125, -0.082); // red dot
   g.add(cyl(0.024, 0.42, GUNMETAL, 0, 0.01, -0.68));           // barrel
   g.add(box(0.05, 0.05, 0.1, DARK, 0, 0.01, -0.9));            // muzzle brake
   g.add(cyl(0.03, 0.025, ACCENT_AR, 0, 0.01, -0.955));         // tip accent

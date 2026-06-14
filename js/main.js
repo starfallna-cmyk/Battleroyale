@@ -178,18 +178,26 @@ function startListening(action, btn) {
   btn.classList.add('listening');
   btn.textContent = 'press…';
 }
-window.addEventListener('keydown', (e) => {
-  if (!listening) return;
-  e.preventDefault();
-  if (e.code !== 'Escape') {
-    // free the key from any other action, then assign
-    for (const a of Object.keys(settings.binds)) if (settings.binds[a] === e.code) delete settings.binds[a];
-    settings.binds[listening.action] = e.code;
-    saveSettings(settings);
-  }
+function assignBind(code) {
+  // free the input from any other action, then assign
+  for (const a of Object.keys(settings.binds)) if (settings.binds[a] === code) delete settings.binds[a];
+  settings.binds[listening.action] = code;
+  saveSettings(settings);
   listening.btn.classList.remove('listening');
   listening = null;
   renderSettings();
+}
+window.addEventListener('keydown', (e) => {
+  if (!listening) return;
+  e.preventDefault();
+  if (e.code === 'Escape') { listening.btn.classList.remove('listening'); listening = null; renderSettings(); }
+  else assignBind(e.code);
+}, true);
+// allow binding mouse buttons (for fire/aim etc.) while listening
+window.addEventListener('mousedown', (e) => {
+  if (!listening) return;
+  e.preventDefault(); e.stopPropagation();
+  assignBind('Mouse' + e.button);
 }, true);
 
 $('customColor').addEventListener('input', (e) => {

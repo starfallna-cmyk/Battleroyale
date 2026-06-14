@@ -8,6 +8,7 @@ export const COLOR_SWATCHES = [
 
 // action -> default KeyboardEvent.code
 export const DEFAULT_BINDS = {
+  fire: 'Mouse0', aim: 'Mouse2',
   forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD',
   jump: 'Space', sprint: 'ShiftLeft', reload: 'KeyR', edit: 'KeyF', emote: 'KeyB',
   w1: 'Digit1', w2: 'Digit2', w3: 'Digit3', w4: 'Digit4',
@@ -15,6 +16,7 @@ export const DEFAULT_BINDS = {
 };
 
 export const BIND_LABELS = {
+  fire: 'Shoot / place', aim: 'Aim (scope)',
   forward: 'Move forward', back: 'Move back', left: 'Strafe left', right: 'Strafe right',
   jump: 'Jump / drop / swim up', sprint: 'Sprint / dive', reload: 'Reload', edit: 'Edit build',
   emote: 'Emote wheel (hold)',
@@ -75,9 +77,13 @@ export function saveSettings(s) {
   try { localStorage.setItem(KEY, JSON.stringify({ color: s.color, binds: s.binds })); } catch (e) { /* ignore */ }
 }
 
-// pretty label for a KeyboardEvent.code
+// pretty label for a KeyboardEvent.code or a mouse token (Mouse0/1/2)
 export function keyName(code) {
   if (!code) return '—';
+  if (code === 'Mouse0') return 'L-MOUSE';
+  if (code === 'Mouse1') return 'M-MOUSE';
+  if (code === 'Mouse2') return 'R-MOUSE';
+  if (code.startsWith('Mouse')) return 'MOUSE' + code.slice(5);
   if (code.startsWith('Key')) return code.slice(3);
   if (code.startsWith('Digit')) return code.slice(5);
   if (code.startsWith('Arrow')) return code.slice(5);

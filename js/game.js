@@ -38,8 +38,6 @@ const STORM_PHASES = [
   { r: 48, hold: 28, shrink: 26, dmg: 7 },
   { r: 18, hold: 999, shrink: 0, dmg: 10 },
 ];
-const BUS_FROM = new THREE.Vector3(-360, 150, -220);
-const BUS_TO = new THREE.Vector3(360, 150, 220);
 
 function el(id) { return document.getElementById(id); }
 
@@ -233,10 +231,9 @@ export class Game {
     this.phase = 'bus'; // 'bus' -> 'sky' -> 'normal'
     this.busT = 0;
     this.busBob = 0;
-    const busDir = BUS_TO.clone().sub(BUS_FROM).normalize();
-    this.busDir = busDir;
-    this.bus.rotation.y = Math.atan2(-busDir.x, -busDir.z);
-    this.yaw = Math.atan2(-busDir.x, -busDir.z);
+    this._randomBusRoute();
+    this.bus.rotation.y = Math.atan2(-this.busDir.x, -this.busDir.z);
+    this.yaw = this.bus.rotation.y;
 
     // --- other players & scores ---
     this.players = new Map(); // id -> remote player
@@ -569,11 +566,16 @@ export class Game {
         case 'reload': this._startReload(); break;
         case 'edit': this._tryEdit(); break;
         case 'emote': this._openEmoteWheel(); break;
+        case 'fire': this.mouseDown = true; this._tryFire(); break;
+        case 'aim': this.ads = true; break;
         case 'jump': e.preventDefault(); break;
       }
     };
     this._onKeyUp = (e) => {
       this.keys[e.code] = false;
+      const a = this._action(e.code);
+      if (a === 'fire') this.mouseDown = false;
+      else if (a === 'aim') this.ads = false;
       if (e.code === this.bind.emote && this.emoteWheelOpen) this._closeEmoteWheel(true);
     };
     this._onMouseMove = (e) => {
@@ -600,12 +602,14 @@ export class Game {
     this._onMouseDown = (e) => {
       sfx.unlock();
       if (!this._locked()) return;
-      if (e.button === 0) { this.mouseDown = true; this._tryFire(); }
-      if (e.button === 2) this.ads = true;
+      const a = this._action('Mouse' + e.button);
+      if (a === 'fire') { this.mouseDown = true; this._tryFire(); }
+      else if (a === 'aim') this.ads = true;
     };
     this._onMouseUp = (e) => {
-      if (e.button === 0) this.mouseDown = false;
-      if (e.button === 2) this.ads = false;
+      const a = this._action('Mouse' + e.button);
+      if (a === 'fire') this.mouseDown = false;
+      else if (a === 'aim') this.ads = false;
     };
     this._onWheel = (e) => {
       if (!this._locked()) return;
@@ -778,10 +782,24 @@ export class Game {
   }
 
   // ===================== battle bus & gliding =====================
+  // a fresh random flight path each match — a chord across the island at altitude,
+  // offset off-centre so it isn't always the same diagonal
+  _randomBusRoute() {
+    const ang = Math.random() * Math.PI * 2;
+    const dx = Math.cos(ang), dz = Math.sin(ang);
+    const R = ARENA * 0.95;
+    const off = (Math.random() * 2 - 1) * ARENA * 0.4;
+    const cx = -dz * off, cz = dx * off; // perpendicular offset
+    const alt = 145 + Math.random() * 20;
+    this.busFrom = new THREE.Vector3(cx - dx * R, alt, cz - dz * R);
+    this.busTo = new THREE.Vector3(cx + dx * R, alt, cz + dz * R);
+    this.busDir = this.busTo.clone().sub(this.busFrom).normalize();
+  }
+
   _busAnim(dt) {
     if (!this.bus.visible) return;
     this.busBob += dt;
-    this.bus.position.y = BUS_FROM.y + Math.sin(this.busBob * 1.2) * 0.6;
+    this.bus.position.y = this.busFrom.y + Math.sin(this.busBob * 1.2) * 0.6;
     this.bus.rotation.z = Math.sin(this.busBob * 0.8) * 0.025;
     const f = 1 + 0.3 * Math.sin(this.busBob * 24) + 0.15 * Math.sin(this.busBob * 7.3);
     this.busFlame.scale.set(1, Math.max(0.4, f), 1);
@@ -792,7 +810,7 @@ export class Game {
     sfx.busMusicStart();
     this.busT += dt / BUS_TIME;
     const t = Math.min(1, this.busT);
-    this.bus.position.lerpVectors(BUS_FROM, BUS_TO, t);
+    this.bus.position.lerpVectors(this.busFrom, this.busTo, t);
     this._busAnim(dt);
     this.pos.copy(this.bus.position);
     this.pos.y -= 1.0;
@@ -948,7 +966,7 @@ export class Game {
     // bus keeps flying off-screen after we drop
     if (this.bus.visible && this.phase !== 'bus') {
       this.busT += dt / BUS_TIME;
-      this.bus.position.lerpVectors(BUS_FROM, BUS_TO, Math.min(1.35, this.busT));
+      this.bus.position.lerpVectors(this.busFrom, this.busTo, Math.min(1.35, this.busT));
       this._busAnim(dt);
       if (this.busT >= 1.35) this.bus.visible = false;
     }
@@ -1044,7 +1062,9 @@ export class Game {
       if (rec.type !== 'ramp') continue;
       const h = BuildSystem.rampHeightAt(rec.ramp, this.pos.x, this.pos.z);
       if (h === -Infinity) continue;
-      if (this.pos.y < h && h - this.pos.y < 1.1 && this.vel.y <= 0.01) {
+      // snap onto the ramp surface from a generous band below so you can't phase
+      // through it on terrain, and allow it while falling (landing) not just level
+      if (this.pos.y <= h + 0.1 && this.pos.y > h - 2.2 && this.vel.y <= 2) {
         this.pos.y = h; this.vel.y = 0; this.grounded = true;
       }
     }
@@ -1188,12 +1208,15 @@ export class Game {
   }
 
   // resolve a ray hit; returns {dmg, head, point, playerId?|dummy?} for flesh hits
-  _applyHit(hit, w) {
+  _applyHit(hit, w, buildHits) {
     let obj = hit.object;
     const isHead = obj.name === 'head';
     while (obj.parent && obj.parent !== this.scene && !obj.userData.key) obj = obj.parent;
 
     if (obj.userData.key) {
+      // defer build damage so a multi-pellet shotgun only hits a piece once
+      // (you can fire through a window without instantly destroying the wall)
+      if (buildHits) { buildHits.add(obj.userData.key); return null; }
       const destroyed = this.builds.damage(obj.userData.key, w.buildDmg);
       if (destroyed) sfx.breakWall();
       else if (w.melee) sfx.thunk();
@@ -1268,6 +1291,7 @@ export class Game {
 
     const spreadBase = w.spread * (this.ads ? w.adsSpread : 1) + this.bloom;
     const dmgByPlayer = new Map();
+    const buildHits = new Set(); // each build piece damaged at most once per shot
     let headAny = false, hitPoint = null, firstEnd = null;
 
     for (let i = 0; i < w.pellets; i++) {
@@ -1286,7 +1310,7 @@ export class Game {
       this._spawnTracer(muzzle, end, w.tracer);
 
       if (!hit) continue;
-      const res = this._applyHit(hit, w);
+      const res = this._applyHit(hit, w, buildHits);
       if (res) {
         headAny = headAny || res.head;
         if (res.playerId !== undefined) {
@@ -1294,6 +1318,13 @@ export class Game {
           hitPoint = hitPoint || res.point;
         }
       }
+    }
+
+    // apply build damage once per piece this shot, not per pellet
+    for (const key of buildHits) {
+      const destroyed = this.builds.damage(key, w.buildDmg);
+      if (destroyed) sfx.breakWall();
+      if (this.net) this.net.send({ t: 'bhit', k: key, d: w.buildDmg });
     }
 
     let totalDmg = 0;
@@ -1559,12 +1590,13 @@ export class Game {
     if (this.lobbyLight) this.lobbyLight.intensity = 0;
     this.builds.clearAll();
     for (const s of this.scores.values()) { s.kills = 0; s.alive = true; }
+    this._randomBusRoute(); // fresh flight path each round
     for (const p of this.players.values()) {
       p.alive = true;
       p.avatar.group.visible = true;
       p.hpBar.draw(100);
-      p.targetPos.copy(BUS_FROM);
-      p.avatar.group.position.copy(BUS_FROM);
+      p.targetPos.copy(this.busFrom);
+      p.avatar.group.position.copy(this.busFrom);
       p.gliding = true;
     }
     this.hp = 100;
@@ -1582,7 +1614,8 @@ export class Game {
     this.busT = 0;
     this.busBob = 0;
     this.bus.visible = true;
-    this.yaw = Math.atan2(-this.busDir.x, -this.busDir.z);
+    this.bus.rotation.y = Math.atan2(-this.busDir.x, -this.busDir.z);
+    this.yaw = this.bus.rotation.y;
     this.pitch = 0;
     this.ui.lobby.classList.add('hidden');
     this.ui.deathOverlay.classList.add('hidden');

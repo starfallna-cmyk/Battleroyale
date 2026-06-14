@@ -70,26 +70,25 @@ export class BuildSystem {
 
   computePlacement(type, feetPos, yaw, pitch = 0) {
     const { a, dir } = quantizeDir(yaw);
-    let level = type === 'floor'
-      ? Math.floor((feetPos.y + 0.15) / CELL)
-      : Math.floor(feetPos.y / CELL + 0.6);
-    if (pitch > 0.5) level += 1;
-    if (pitch < -0.75 && type === 'wall') level -= 1;
-    level = Math.max(0, level);
+    // feet-relative base height (not a global grid) so pieces sit on the ground /
+    // the surface you're standing on instead of floating or sinking on terrain
+    let base = Math.round(feetPos.y * 2) / 2;
+    if (pitch > 0.5) base += CELL;                       // look up to place a tier higher
+    if (pitch < -0.75 && type === 'wall') base -= CELL;  // look down to drop a wall below
 
     const pos = new THREE.Vector3();
     let rotX = 0;
 
     if (type === 'wall') {
       const c = cellCenter(feetPos);
-      pos.set(c.x + dir.x * (CELL / 2), level * CELL + CELL / 2, c.z + dir.z * (CELL / 2));
+      pos.set(c.x + dir.x * (CELL / 2), base + CELL / 2, c.z + dir.z * (CELL / 2));
     } else {
       const target = feetPos.clone().addScaledVector(dir, CELL * 0.65 + 1);
       const c = cellCenter(target);
       if (type === 'floor') {
-        pos.set(c.x, level * CELL + T / 2, c.z);
+        pos.set(c.x, base + T / 2, c.z);
       } else {
-        pos.set(c.x, level * CELL + CELL / 2, c.z);
+        pos.set(c.x, base + CELL / 2, c.z);
         rotX = Math.PI / 4;
       }
     }
