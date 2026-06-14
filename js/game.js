@@ -1587,6 +1587,9 @@ export class Game {
     this.ui.lobby.classList.add('hidden');
     this.ui.deathOverlay.classList.add('hidden');
     this.ui.banner.classList.add('hidden');
+    // grab the mouse so the round doesn't open on the "paused" overlay (works
+    // for the host inside the ready-click gesture; guests click once)
+    if (this.onMatchStart) this.onMatchStart();
     if (!this._locked()) this.ui.lockOverlay.classList.remove('hidden');
     this._refreshHud();
     this._refreshScores();
@@ -1708,6 +1711,26 @@ export class Game {
     return best;
   }
 
+  // can the local camera actually see this point? (range + terrain + wall LOS)
+  _canSee(target) {
+    const from = this.camera.position;
+    const hx = target.x, hy = target.y + 1.7, hz = target.z; // aim at the head
+    const dx = hx - from.x, dy = hy - from.y, dz = hz - from.z;
+    const dist = Math.hypot(dx, dy, dz);
+    if (dist > 48) return false;
+    // terrain occlusion — blocks cross-hill "tracking"
+    const steps = Math.min(16, Math.ceil(dist / 4));
+    for (let i = 1; i < steps; i++) {
+      const t = i / steps;
+      const px = from.x + dx * t, py = from.y + dy * t, pz = from.z + dz * t;
+      if (terrainHeightAt(px, pz) > py + 0.4) return false;
+    }
+    // wall occlusion (nearby building AABBs)
+    const inv = 1 / dist;
+    if (this._rayBlockDist(from, { x: dx * inv, y: dy * inv, z: dz * inv }, dist - 1.5) < dist - 1.5) return false;
+    return true;
+  }
+
   // ===================== camera & avatars =====================
   _updateCamera(dt) {
     if (this.state === 'lobby') {
@@ -1797,6 +1820,11 @@ export class Game {
         speed: p.speed, grounded: p.grounded, pitch: p.curPitch,
         item: p.item, gliding: p.gliding, reloading: p.reloading, emote: p.emote ?? -1,
       });
+      // only show a foe's name + health when they're near AND in line of sight —
+      // no more seeing everyone's nameplate through walls / across the map
+      const show = p.alive && this._canSee(p.avatar.group.position);
+      p.label.visible = show;
+      p.hpBar.sprite.visible = show;
     }
 
     for (const d of this.dummies) {

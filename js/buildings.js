@@ -334,12 +334,14 @@ function temple(b) {
 }
 
 function well(b) {
+  b.floor(3, 3, 0x8a8178);                                    // foundation so it never floats
   b.cyl(1.2, 0.9, 0, 0, 0, 0x888888, { seg: 10, solid: true });
   for (const ox of [-1, 1]) b.cyl(0.1, 2.8, ox, 0, 0, 0x5a4030, { seg: 6 });
   b.prop(2.4, 0.12, 0.12, 0, 2.8, 0, 0x5a4030);
 }
 
 function marketStall(b) {
+  b.floor(4, 3, 0x7a5230);                                    // solid base (no floating posts)
   for (const [px, pz] of [[-1.5, -1], [1.5, -1], [-1.5, 1], [1.5, 1]]) {
     b.cyl(0.12, 2.8, px, 0, pz, 0x5a3818, { seg: 6 });
   }
@@ -350,6 +352,9 @@ function marketStall(b) {
 function pier(b, length = 8) {
   for (let i = 0; i < length; i++) {
     b.prop(1.8, 0.15, 0.5, 0, 0.1, i * 0.55, 0x6a4828);
+    if (i % 2 === 0) for (const px of [-0.7, 0.7]) {           // support piles down to the ground/water
+      b.cyl(0.08, 3.2, px, -3.1, i * 0.55, 0x4a3018, { seg: 5 });
+    }
   }
 }
 

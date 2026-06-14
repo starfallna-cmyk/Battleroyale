@@ -62,6 +62,9 @@ function startGame(roomCode) {
     sfx.unlock();
     canvas.requestPointerLock();
   };
+  // when a round begins, grab the mouse automatically (host is inside the
+  // ready-click gesture; for guests the browser may require one click)
+  game.onMatchStart = () => { sfx.unlock(); try { canvas.requestPointerLock(); } catch (e) { /* needs a click */ } };
   canvas.addEventListener('click', tryLock);
   lockOverlay.addEventListener('click', tryLock);
   document.addEventListener('pointerlockchange', () => {
