@@ -167,30 +167,34 @@ canvas { display: block; }
    tube with a glowing red lens rim and a red dot reticle dead center */
 #reddot {
   position: absolute; inset: 0; pointer-events: none;
+  /* large clear circular lens (slightly above centre) with a glassy rim and a
+     dark scope shadow filling the rest of the view */
   background:
-    radial-gradient(circle at center,
-      transparent 0 22%,
-      rgba(255,42,48,.10) 23%,
-      rgba(255,42,48,.55) 25% 27%,        /* bright red lens rim */
-      rgba(20,0,2,.35) 28%,
-      rgba(0,0,0,.78) 34%,
-      rgba(0,0,0,.96) 44%);               /* dark eyepiece tube */
+    radial-gradient(circle at 50% 45%, transparent 0 35%,
+      rgba(150,200,255,.10) 35.5% 37%,                 /* glassy lens rim */
+      rgba(8,10,14,.62) 39%,
+      rgba(4,5,8,.9) 52%,
+      rgba(0,0,0,.97) 70%);
 }
-/* faint red interior lens glow inside the viewport */
+/* the scope BODY/housing rising from the bottom, like the optic in front of
+   the eye, plus the rubber eyecup ring around the lens */
 #reddot::after {
   content: ''; position: absolute; inset: 0;
-  background: radial-gradient(circle at center, rgba(255,40,48,.14) 0 18%, rgba(255,40,48,.04) 22%, transparent 24%);
+  background:
+    radial-gradient(circle at 50% 45%, transparent 0 37.5%,
+      rgba(0,0,0,.55) 38%, rgba(0,0,0,.92) 41% 44%, transparent 45%), /* thick eyecup ring */
+    radial-gradient(ellipse 42% 30% at 50% 104%, #05070a 0 60%, rgba(5,7,10,.85) 72%, transparent 80%); /* housing at bottom */
 }
-/* the red dot reticle + soft halo, dead center */
+/* thin red crosshair reticle with a centre dot, sized to the lens */
 #reddot::before {
-  content: ''; position: absolute; top: 50%; left: 50%;
-  width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px;
-  background: #ff2230; border-radius: 50%; z-index: 1;
-  box-shadow:
-    0 0 8px 2px rgba(255,40,48,.95),
-    0 0 18px 6px rgba(255,40,48,.55),
-    0 0 0 10px rgba(255,40,48,.08),
-    0 0 1px 11px rgba(255,70,70,.30);
+  content: ''; position: absolute; top: 45%; left: 50%;
+  width: 46vmin; height: 46vmin; transform: translate(-50%, -50%); z-index: 1;
+  background:
+    linear-gradient(to right, transparent calc(50% - 0.9px), rgba(255,60,64,.85) calc(50% - 0.9px),
+      rgba(255,60,64,.85) calc(50% + 0.9px), transparent calc(50% + 0.9px)),
+    linear-gradient(to bottom, transparent calc(50% - 0.9px), rgba(255,60,64,.85) calc(50% - 0.9px),
+      rgba(255,60,64,.85) calc(50% + 0.9px), transparent calc(50% + 0.9px)),
+    radial-gradient(circle at center, #ff2630 0 3px, rgba(255,38,48,.85) 3px 4.5px, transparent 5.5px);
 }
 
 #scoreList {

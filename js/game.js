@@ -1202,7 +1202,9 @@ export class Game {
     const reddot = this.ads && this.mode === 'weapon' && w.reddot;
     this.ui.scope.classList.toggle('hidden', !scoped);
     this.ui.reddot.classList.toggle('hidden', !reddot);
-    this.ui.crosshair.style.visibility = (scoped || reddot) ? 'hidden' : 'visible';
+    // the red-dot optic carries its own reticle; the sniper scope keeps the
+    // crosshair as its aim point
+    this.ui.crosshair.style.visibility = reddot ? 'hidden' : 'visible';
   }
 
   _placeBuild(placement) {
