@@ -163,18 +163,34 @@ canvas { display: block; }
   background: radial-gradient(circle at center, transparent 28%, rgba(0,0,0,.92) 30%);
 }
 
-/* red-dot reticle shown when aiming the AR */
+/* red-dot OPTIC sight picture shown when aiming the AR — a circular eyepiece
+   tube with a glowing red lens rim and a red dot reticle dead center */
 #reddot {
-  position: absolute; top: 50%; left: 50%; width: 0; height: 0;
+  position: absolute; inset: 0; pointer-events: none;
+  background:
+    radial-gradient(circle at center,
+      transparent 0 22%,
+      rgba(255,42,48,.10) 23%,
+      rgba(255,42,48,.55) 25% 27%,        /* bright red lens rim */
+      rgba(20,0,2,.35) 28%,
+      rgba(0,0,0,.78) 34%,
+      rgba(0,0,0,.96) 44%);               /* dark eyepiece tube */
 }
-#reddot::before {
-  content: ''; position: absolute; left: -4px; top: -4px; width: 8px; height: 8px;
-  background: #ff2a2a; border-radius: 50%;
-  box-shadow: 0 0 6px 2px rgba(255,40,40,.9), 0 0 2px rgba(0,0,0,.8);
-}
+/* faint red interior lens glow inside the viewport */
 #reddot::after {
-  content: ''; position: absolute; left: -13px; top: -13px; width: 26px; height: 26px;
-  border: 1.5px solid rgba(255,255,255,.25); border-radius: 50%;
+  content: ''; position: absolute; inset: 0;
+  background: radial-gradient(circle at center, rgba(255,40,48,.14) 0 18%, rgba(255,40,48,.04) 22%, transparent 24%);
+}
+/* the red dot reticle + soft halo, dead center */
+#reddot::before {
+  content: ''; position: absolute; top: 50%; left: 50%;
+  width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px;
+  background: #ff2230; border-radius: 50%; z-index: 1;
+  box-shadow:
+    0 0 8px 2px rgba(255,40,48,.95),
+    0 0 18px 6px rgba(255,40,48,.55),
+    0 0 0 10px rgba(255,40,48,.08),
+    0 0 1px 11px rgba(255,70,70,.30);
 }
 
 #scoreList {

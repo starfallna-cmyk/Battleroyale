@@ -74,15 +74,15 @@ export class BuildSystem {
     const c = type === 'wall' ? cellCenter(feetPos)
       : cellCenter(feetPos.clone().addScaledVector(dir, CELL * 0.65 + 1));
 
-    // vertical grid ANCHORED to the terrain under that cell: clean CELL tiers that
-    // start at the ground (no floating) and snap consistently so re-placing the
-    // same spot de-dupes instead of growing a tower
-    const groundRef = this.groundAt ? this.groundAt(c.x, c.z) : 0;
-    let level = Math.round((feetPos.y - groundRef) / CELL);
-    if (pitch > 0.5) level += 1;                       // look up to place a tier higher
-    if (pitch < -0.75 && type === 'wall') level -= 1;  // look down to drop a wall below
-    level = Math.max(0, level);
-    const base = groundRef + level * CELL;
+    // GLOBAL fixed vertical grid (origin y=0): consistent CELL tiers everywhere,
+    // independent of terrain. Placing the same spot de-dupes (no tower), and
+    // walls/ramps chain by exactly one cell as you climb — even mid-air on top
+    // of other builds. floor() keeps each piece at/below your feet so you stand
+    // on what you place.
+    let level = Math.floor((feetPos.y + 0.2) / CELL);
+    if (pitch > 0.45) level += 1;   // look up to place a tier higher
+    if (pitch < -0.55) level -= 1;  // look down to place a tier lower
+    const base = level * CELL;
 
     const pos = new THREE.Vector3();
     let rotX = 0;
