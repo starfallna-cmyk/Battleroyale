@@ -373,7 +373,6 @@ export class Game {
       waterOverlay: el('waterOverlay'),
       minimapWrap: el('minimapWrap'), minimap: el('minimap'), stormStatus: el('stormStatus'),
       stormWarn: el('stormWarn'), stormVignette: el('stormVignette'), emoteWheel: el('emoteWheel'),
-      reddot: el('reddot'),
       scoreList: el('scoreList'), aliveBadge: el('aliveBadge'),
       killfeed: el('killfeed'), hitmarker: el('hitmarker'),
       damageFlash: el('damageFlash'), scope: el('scopeOverlay'),
@@ -1199,12 +1198,7 @@ export class Game {
     this.ui.crosshair.style.setProperty('--sp', `${(5 + this.bloom * 240).toFixed(1)}px`);
     const w = WEAPONS[this.weaponIdx];
     const scoped = this.ads && this.mode === 'weapon' && w.scope;
-    const reddot = this.ads && this.mode === 'weapon' && w.reddot;
     this.ui.scope.classList.toggle('hidden', !scoped);
-    this.ui.reddot.classList.toggle('hidden', !reddot);
-    // the red-dot optic carries its own reticle; the sniper scope keeps the
-    // crosshair as its aim point
-    this.ui.crosshair.style.visibility = reddot ? 'hidden' : 'visible';
   }
 
   _placeBuild(placement) {
