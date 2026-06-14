@@ -6,7 +6,7 @@ import * as THREE from 'three';
 export const WEAPONS = [
   { name: 'Assault Rifle', dmg: 22, head: 1.6, rate: 0.115, mag: 30, reload: 1.6,
     auto: true, spread: 0.009, bloom: 0.008, kick: 0.006, pellets: 1, range: 250,
-    zoom: 60, adsSpread: 0.4, falloff: [35, 120, 0.65], buildDmg: 22, sound: 'shoot', tracer: 0xffe082 },
+    zoom: 50, adsSpread: 0.28, reddot: true, falloff: [35, 120, 0.65], buildDmg: 22, sound: 'shoot', tracer: 0xffe082 },
   { name: 'Shotgun', dmg: 10, head: 1.4, rate: 0.8, mag: 6, reload: 2.1,
     auto: false, spread: 0.042, bloom: 0, kick: 0.035, pellets: 8, range: 45,
     zoom: 66, adsSpread: 0.7, falloff: [9, 30, 0.3], buildDmg: 10, sound: 'shotgun', tracer: 0xffab66 },

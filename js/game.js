@@ -207,6 +207,7 @@ export class Game {
     this.lobbyAnchor = { x: 0, y: 135, z: 40 };
 
     this.builds = new BuildSystem(this.scene);
+    this.builds.groundAt = terrainHeightAt; // anchors the build grid to the terrain
 
     // --- my player state ---
     const spawn = SPAWNS[this.myId % SPAWNS.length];
@@ -342,9 +343,17 @@ export class Game {
     this.zoneSendT = 0;
     this.stormDmgAccum = 0;
     const wallMat = new THREE.MeshBasicMaterial({
-      color: 0x9b5cff, transparent: true, opacity: 0.2, side: THREE.DoubleSide, depthWrite: false, fog: false,
+      color: 0xc341ff, transparent: true, opacity: 0.42, side: THREE.DoubleSide,
+      depthWrite: false, fog: false,
     });
     this.stormWall = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 64, 1, true), wallMat);
+    // bright glowing ring where the wall meets the ground
+    this.stormRing = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.06, 64, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0xe2a8ff, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false, fog: false }));
+    this.stormRing.userData.noHit = this.stormRing.userData.noCam = true;
+    this.stormRing.raycast = () => {};
+    this.stormRing.visible = false;
+    this.scene.add(this.stormRing);
     this.stormWall.userData.noHit = this.stormWall.userData.noCam = true;
     this.stormWall.raycast = () => {};
     this.stormWall.visible = false;
@@ -361,6 +370,7 @@ export class Game {
       waterOverlay: el('waterOverlay'),
       minimapWrap: el('minimapWrap'), minimap: el('minimap'), stormStatus: el('stormStatus'),
       stormWarn: el('stormWarn'), stormVignette: el('stormVignette'), emoteWheel: el('emoteWheel'),
+      reddot: el('reddot'),
       scoreList: el('scoreList'), aliveBadge: el('aliveBadge'),
       killfeed: el('killfeed'), hitmarker: el('hitmarker'),
       damageFlash: el('damageFlash'), scope: el('scopeOverlay'),
@@ -729,6 +739,7 @@ export class Game {
       this._refreshStormStatus();
     } else {
       this.stormWall.visible = false;
+      this.stormRing.visible = false;
       this.ui.minimapWrap.classList.add('hidden');
       this.ui.stormWarn.classList.add('hidden');
       this.ui.stormVignette.classList.remove('show');
@@ -898,11 +909,14 @@ export class Game {
 
   // all clients: damage self when outside the circle, update wall + warning
   _applyStorm(dt) {
-    if (!this.zone) { this.stormWall.visible = false; return; }
+    if (!this.zone) { this.stormWall.visible = false; this.stormRing.visible = false; return; }
     this.stormWall.visible = true;
     this.stormWall.position.set(this.zone.cx, 60, this.zone.cz);
     this.stormWall.scale.set(this.zone.r, 240, this.zone.r);
-    this.stormWall.material.opacity = 0.07 + (this.zone.closing ? 0.04 : 0) + Math.sin(this.waterT * 4) * 0.015;
+    this.stormWall.material.opacity = 0.42 + (this.zone.closing ? 0.12 : 0) + Math.sin(this.waterT * 4) * 0.06;
+    this.stormRing.visible = true;
+    this.stormRing.position.set(this.zone.cx, 30, this.zone.cz);
+    this.stormRing.scale.set(this.zone.r, 1, this.zone.r);
 
     const outside = !this.dead && this.state === 'match' && this.phase === 'normal' &&
       Math.hypot(this.pos.x - this.zone.cx, this.pos.z - this.zone.cz) > this.zone.r;
@@ -1174,8 +1188,12 @@ export class Game {
     }
 
     this.ui.crosshair.style.setProperty('--sp', `${(5 + this.bloom * 240).toFixed(1)}px`);
-    const scoped = this.ads && this.mode === 'weapon' && WEAPONS[this.weaponIdx].scope;
+    const w = WEAPONS[this.weaponIdx];
+    const scoped = this.ads && this.mode === 'weapon' && w.scope;
+    const reddot = this.ads && this.mode === 'weapon' && w.reddot;
     this.ui.scope.classList.toggle('hidden', !scoped);
+    this.ui.reddot.classList.toggle('hidden', !reddot);
+    this.ui.crosshair.style.visibility = (scoped || reddot) ? 'hidden' : 'visible';
   }
 
   _placeBuild(placement) {

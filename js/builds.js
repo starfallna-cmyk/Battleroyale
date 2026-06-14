@@ -70,27 +70,29 @@ export class BuildSystem {
 
   computePlacement(type, feetPos, yaw, pitch = 0) {
     const { a, dir } = quantizeDir(yaw);
-    // feet-relative base height (not a global grid) so pieces sit on the ground /
-    // the surface you're standing on instead of floating or sinking on terrain
-    let base = Math.round(feetPos.y * 2) / 2;
-    if (pitch > 0.5) base += CELL;                       // look up to place a tier higher
-    if (pitch < -0.75 && type === 'wall') base -= CELL;  // look down to drop a wall below
+    // the piece's grid cell (wall on the cell edge ahead; floor/ramp the cell ahead)
+    const c = type === 'wall' ? cellCenter(feetPos)
+      : cellCenter(feetPos.clone().addScaledVector(dir, CELL * 0.65 + 1));
+
+    // vertical grid ANCHORED to the terrain under that cell: clean CELL tiers that
+    // start at the ground (no floating) and snap consistently so re-placing the
+    // same spot de-dupes instead of growing a tower
+    const groundRef = this.groundAt ? this.groundAt(c.x, c.z) : 0;
+    let level = Math.round((feetPos.y - groundRef) / CELL);
+    if (pitch > 0.5) level += 1;                       // look up to place a tier higher
+    if (pitch < -0.75 && type === 'wall') level -= 1;  // look down to drop a wall below
+    level = Math.max(0, level);
+    const base = groundRef + level * CELL;
 
     const pos = new THREE.Vector3();
     let rotX = 0;
-
     if (type === 'wall') {
-      const c = cellCenter(feetPos);
       pos.set(c.x + dir.x * (CELL / 2), base + CELL / 2, c.z + dir.z * (CELL / 2));
+    } else if (type === 'floor') {
+      pos.set(c.x, base + T / 2, c.z);
     } else {
-      const target = feetPos.clone().addScaledVector(dir, CELL * 0.65 + 1);
-      const c = cellCenter(target);
-      if (type === 'floor') {
-        pos.set(c.x, base + T / 2, c.z);
-      } else {
-        pos.set(c.x, base + CELL / 2, c.z);
-        rotX = Math.PI / 4;
-      }
+      pos.set(c.x, base + CELL / 2, c.z);
+      rotX = Math.PI / 4;
     }
 
     const key = `${type}|${Math.round(pos.x * 10)}|${Math.round(pos.y * 10)}|${Math.round(pos.z * 10)}|${Math.round(a * 100)}`;
