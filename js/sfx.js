@@ -49,59 +49,36 @@ let music = null;
 
 export const sfx = {
   unlock() { ac(); }, // call on first user gesture
-  // gentle ambient lobby loop — slow chord pad + soft arpeggio, fully synthesized
+  // lobby music — looped MP3 track with a short fade-in
   musicStart() {
     if (music) return;
-    let c;
-    try { c = ac(); } catch (e) { return; }
-    const master = c.createGain();
-    master.gain.value = 0;
-    master.gain.linearRampToValueAtTime(0.16, c.currentTime + 2);
-    master.connect(c.destination);
-    // chords (root-relative semitone sets), cycled slowly
-    const chords = [[0, 4, 7, 11], [-3, 0, 4, 9], [-5, -1, 2, 7], [2, 5, 9, 12]];
-    const midi = (n) => 220 * Math.pow(2, n / 12);
-    let i = 0;
-    const playChord = () => {
-      if (!music) return;
-      const set = chords[i % chords.length]; i++;
-      const dur = 4.2;
-      set.forEach((n, k) => {
-        const o = c.createOscillator(); o.type = k === 0 ? 'sine' : 'triangle';
-        o.frequency.value = midi(n) / (k === 0 ? 2 : 1);
-        o.detune.value = (Math.random() - 0.5) * 6;
-        const g = c.createGain(); g.gain.value = 0;
-        g.gain.linearRampToValueAtTime(0.09, c.currentTime + 1.2);
-        g.gain.linearRampToValueAtTime(0.0001, c.currentTime + dur);
-        o.connect(g); g.connect(master); o.start(); o.stop(c.currentTime + dur + 0.1);
-      });
-      // soft arpeggio sparkle
-      set.forEach((n, k) => {
-        const o = c.createOscillator(); o.type = 'sine';
-        o.frequency.value = midi(n + 12);
-        const g = c.createGain(); g.gain.value = 0;
-        const t0 = c.currentTime + 0.4 + k * 0.45;
-        g.gain.setValueAtTime(0, t0);
-        g.gain.linearRampToValueAtTime(0.05, t0 + 0.05);
-        g.gain.exponentialRampToValueAtTime(0.0008, t0 + 0.9);
-        o.connect(g); g.connect(master); o.start(t0); o.stop(t0 + 1);
-      });
-    };
-    playChord();
-    const timer = setInterval(playChord, 4000);
-    music = { master, timer, c };
+    try {
+      const a = new Audio('assets/lobby-music.mp3');
+      a.loop = true;
+      a.volume = 0;
+      music = { a, fade: null };
+      const p = a.play();
+      if (p && p.catch) p.catch(() => {}); // ignore autoplay rejection (a gesture will retry)
+      // fade in to a comfortable level
+      const target = 0.45;
+      music.fade = setInterval(() => {
+        if (!music) return;
+        a.volume = Math.min(target, a.volume + 0.03);
+        if (a.volume >= target) { clearInterval(music.fade); music.fade = null; }
+      }, 60);
+    } catch (e) { music = null; }
   },
   musicStop() {
     if (!music) return;
-    const { master, timer, c } = music;
+    const m = music;
     music = null;
-    clearInterval(timer);
+    if (m.fade) clearInterval(m.fade);
     try {
-      master.gain.cancelScheduledValues(c.currentTime);
-      master.gain.setValueAtTime(master.gain.value, c.currentTime);
-      master.gain.linearRampToValueAtTime(0, c.currentTime + 1);
-      setTimeout(() => master.disconnect(), 1200);
-    } catch (e) { /* already gone */ }
+      const fo = setInterval(() => {
+        m.a.volume = Math.max(0, m.a.volume - 0.05);
+        if (m.a.volume <= 0) { clearInterval(fo); m.a.pause(); }
+      }, 50);
+    } catch (e) { try { m.a.pause(); } catch (_) {} }
   },
   busStart() {
     if (busNodes) return;

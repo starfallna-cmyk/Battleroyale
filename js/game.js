@@ -204,7 +204,8 @@ export class Game {
     this.sun = this.scene.userData.sun;
     this.swimming = false;
     this.sprinting = false;
-    this.lobbyAnchor = { x: SPAWNS[0].pos[0], y: SPAWNS[0].pos[1], z: SPAWNS[0].pos[2] };
+    // a floating staging platform high above the island — scenic and clutter-free
+    this.lobbyAnchor = { x: 0, y: 135, z: 40 };
 
     this.builds = new BuildSystem(this.scene);
 
@@ -267,7 +268,7 @@ export class Game {
     // --- practice dummies ---
     this.dummies = [];
     if (!net) {
-      const sx = this.lobbyAnchor.x, sz = this.lobbyAnchor.z;
+      const sx = 75, sz = 40; // flat open ground for target practice
       for (const [ox, oz] of [[-6, -8], [0, -11], [7, -9]]) {
         const x = sx + ox, z = sz + oz;
         const avatar = new Avatar(0xb39ddb);
@@ -345,6 +346,7 @@ export class Game {
     this.stormWall.raycast = () => {};
     this.stormWall.visible = false;
     this.scene.add(this.stormWall);
+    this._buildLobbyStage();
 
     this.keys = {};
     this._bindInput();
@@ -440,6 +442,49 @@ export class Game {
     this.scores.delete(id);
     this._feed(`${p.name} left the game`);
     this._refreshScores();
+  }
+
+  // glowing show-stage the players stand on while in the lobby
+  _buildLobbyStage() {
+    const A = this.lobbyAnchor;
+    const g = new THREE.Group();
+    g.position.set(A.x, A.y, A.z);
+    const basic = (col, op = 1, add = false) => new THREE.MeshBasicMaterial({
+      color: col, transparent: op < 1 || add, opacity: op, fog: false,
+      depthWrite: false, blending: add ? THREE.AdditiveBlending : THREE.NormalBlending,
+      side: THREE.DoubleSide });
+
+    const dais = new THREE.Mesh(new THREE.CylinderGeometry(5.2, 5.8, 0.6, 56),
+      new THREE.MeshStandardMaterial({ color: 0x0e1118, roughness: 0.4, metalness: 0.6 }));
+    dais.position.y = -0.28; dais.receiveShadow = true; g.add(dais);
+    const top = new THREE.Mesh(new THREE.CircleGeometry(5, 56), basic(0x18324c, 0.7));
+    top.rotation.x = -Math.PI / 2; top.position.y = 0.04; g.add(top);
+    const edge = new THREE.Mesh(new THREE.TorusGeometry(5.05, 0.14, 10, 64), basic(0x4fc3f7, 1, true));
+    edge.rotation.x = Math.PI / 2; edge.position.y = 0.06; g.add(edge);
+
+    // slow counter-rotating accent rings
+    this.lobbyRings = [];
+    for (const [r, col, tilt] of [[6.4, 0x4fc3f7, 0.42], [7.1, 0xff7043, -0.32], [7.8, 0xffd54f, 0.18]]) {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(r, 0.06, 8, 80), basic(col, 0.55, true));
+      ring.rotation.x = Math.PI / 2 + tilt; ring.position.y = 1.6;
+      g.add(ring); this.lobbyRings.push(ring);
+    }
+    // upward light shafts ringing the dais
+    for (let i = 0; i < 8; i++) {
+      const a = i / 8 * Math.PI * 2;
+      const beam = new THREE.Mesh(new THREE.ConeGeometry(0.5, 11, 14, 1, true),
+        basic(i % 2 ? 0x4fc3f7 : 0xff7043, 0.07, true));
+      beam.position.set(Math.cos(a) * 5, 5.4, Math.sin(a) * 5);
+      g.add(beam);
+    }
+    g.traverse((o) => { o.userData.noHit = o.userData.noCam = true; o.raycast = () => {}; });
+    g.visible = false;
+    this.scene.add(g);
+    this.lobbyStage = g;
+
+    this.lobbyLight = new THREE.PointLight(0xcfe8ff, 0, 36);
+    this.lobbyLight.position.set(A.x, A.y + 9, A.z);
+    this.scene.add(this.lobbyLight);
   }
 
   // ===================== input =====================
@@ -555,7 +600,10 @@ export class Game {
     const dt = Math.min(this.clock.getDelta(), 0.05);
     this.sprinting = false; // re-set by _movement when actually sprinting
     if (this.state === 'lobby' || this.state === 'roundover') {
-      // gameplay frozen; lobby orbit camera / results banner
+      // gameplay frozen; spin the lobby stage rings for flair
+      if (this.lobbyStage && this.lobbyStage.visible && this.lobbyRings) {
+        this.lobbyRings.forEach((r, i) => { r.rotation.z += dt * (0.3 - i * 0.18); });
+      }
     } else if (this.phase === 'bus') {
       this._busTick(dt);
     } else if (!this.dead) {
@@ -1420,6 +1468,8 @@ export class Game {
   _startMatch() {
     this.state = 'match';
     sfx.musicStop(); // stop lobby music when the round begins
+    if (this.lobbyStage) this.lobbyStage.visible = false;
+    if (this.lobbyLight) this.lobbyLight.intensity = 0;
     this.builds.clearAll();
     for (const s of this.scores.values()) { s.kills = 0; s.alive = true; }
     for (const p of this.players.values()) {
@@ -1497,6 +1547,8 @@ export class Game {
     sfx.busStop();
     sfx.musicStart(); // lobby music
     this.zone = null; this.zoneState = null; this.stormWall.visible = false;
+    if (this.lobbyStage) this.lobbyStage.visible = true;
+    if (this.lobbyLight) this.lobbyLight.intensity = 1.1;
     this.builds.clearAll();
     for (const s of this.scores.values()) { s.alive = false; s.kills = 0; }
     for (const p of this.players.values()) {
@@ -1624,7 +1676,7 @@ export class Game {
         av.group.visible = true;
         const px = A.x + (i - (ids.length - 1) / 2) * 1.7;
         const pz = A.z + 1;
-        av.group.position.set(px, terrainHeightAt(px, pz), pz);
+        av.group.position.set(px, A.y + 0.06, pz); // level on the glowing dais
         av.group.rotation.y = 0;
         av.update(dt, { speed: 0, grounded: true, pitch: 0, item: 0 });
       });
